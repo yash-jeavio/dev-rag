@@ -969,7 +969,7 @@ public class DocumentExceptionHandler {
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `./mvnw test -Dtest=DocumentControllerTest`
-Expected: PASS (6 tests)
+Expected: PASS (7 tests)
 
 - [ ] **Step 6: Commit**
 
@@ -1127,7 +1127,7 @@ Add these methods to `DocumentController` (after `getById`, before the closing b
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `./mvnw test -Dtest=DocumentControllerTest`
-Expected: PASS (12 tests)
+Expected: PASS (13 tests)
 
 - [ ] **Step 5: Run the full test suite**
 
