@@ -44,6 +44,7 @@ public class DocumentService {
 	}
 
 	public Document findById(String projectId, String documentId) {
+		projectService.findById(projectId);
 		Document document = documents.get(documentId);
 		if (document == null || !document.projectId().equals(projectId)) {
 			throw new DocumentNotFoundException(documentId);

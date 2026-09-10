@@ -119,6 +119,12 @@ class DocumentServiceTest {
 	}
 
 	@Test
+	void findByIdThrowsProjectNotFoundWhenProjectDoesNotExist() {
+		assertThatThrownBy(() -> documentService.findById("unknown-project", "unknown-id"))
+				.isInstanceOf(ProjectNotFoundException.class);
+	}
+
+	@Test
 	void updateFileReplacesContentAndPreservesIdAndCreatedAt() {
 		Document created = documentService.ingestFile(existingProjectId, "notes.txt",
 				"Original".getBytes(StandardCharsets.UTF_8));
@@ -160,6 +166,7 @@ class DocumentServiceTest {
 				new IngestTextRequest("Renamed", "Updated body"));
 
 		assertThat(updated.id()).isEqualTo(created.id());
+		assertThat(updated.projectId()).isEqualTo(existingProjectId);
 		assertThat(updated.title()).isEqualTo("Renamed");
 		assertThat(updated.content()).isEqualTo("Updated body");
 		assertThat(updated.sourceType()).isEqualTo(SourceType.TEXT);
@@ -169,6 +176,16 @@ class DocumentServiceTest {
 	@Test
 	void updateTextThrowsWhenDocumentDoesNotExist() {
 		assertThatThrownBy(() -> documentService.updateText(existingProjectId, "unknown-id",
+				new IngestTextRequest("Title", "Body"))).isInstanceOf(DocumentNotFoundException.class);
+	}
+
+	@Test
+	void updateTextThrowsWhenDocumentBelongsToDifferentProject() {
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"));
+		Project otherProject = projectService
+				.create(new CreateProjectRequest("Other", null, "Java", "https://github.com/example/other"));
+
+		assertThatThrownBy(() -> documentService.updateText(otherProject.id(), created.id(),
 				new IngestTextRequest("Title", "Body"))).isInstanceOf(DocumentNotFoundException.class);
 	}
 
