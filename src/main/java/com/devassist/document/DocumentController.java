@@ -7,9 +7,11 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -47,5 +49,26 @@ public class DocumentController {
 			@PathVariable String documentId) {
 		Document document = documentService.findById(projectId, documentId);
 		return ResponseEntity.ok(DocumentResponse.from(document));
+	}
+
+	@PutMapping(path = "/{documentId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public ResponseEntity<DocumentResponse> update(@PathVariable String projectId, @PathVariable String documentId,
+			@RequestParam("file") MultipartFile file) throws IOException {
+		Document document = documentService.updateFile(projectId, documentId, file.getOriginalFilename(),
+				file.getBytes());
+		return ResponseEntity.ok(DocumentResponse.from(document));
+	}
+
+	@PutMapping(path = "/{documentId}/text", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<DocumentResponse> updateFromText(@PathVariable String projectId,
+			@PathVariable String documentId, @Valid @RequestBody IngestTextRequest request) {
+		Document document = documentService.updateText(projectId, documentId, request);
+		return ResponseEntity.ok(DocumentResponse.from(document));
+	}
+
+	@DeleteMapping("/{documentId}")
+	public ResponseEntity<Void> delete(@PathVariable String projectId, @PathVariable String documentId) {
+		documentService.delete(projectId, documentId);
+		return ResponseEntity.noContent().build();
 	}
 }

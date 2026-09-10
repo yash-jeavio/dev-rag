@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -17,9 +18,12 @@ import com.devassist.project.ProjectNotFoundException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -125,6 +129,81 @@ class DocumentControllerTest {
 		given(documentService.findById("project-1", "missing")).willThrow(new DocumentNotFoundException("missing"));
 
 		mockMvc.perform(get("/api/projects/{projectId}/documents/{documentId}", "project-1", "missing"))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void updateReturnsOkWithUpdatedBody() throws Exception {
+		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
+		Document updated = new Document("doc-1", "project-1", "revised.txt", SourceType.TEXT, "Revised content",
+				createdAt);
+		given(documentService.updateFile(eq("project-1"), eq("doc-1"), eq("revised.txt"), any(byte[].class)))
+				.willReturn(updated);
+
+		MockMultipartFile file = new MockMultipartFile("file", "revised.txt", MediaType.TEXT_PLAIN_VALUE,
+				"Revised content".getBytes(StandardCharsets.UTF_8));
+
+		mockMvc.perform(multipart(HttpMethod.PUT, "/api/projects/{projectId}/documents/{documentId}", "project-1",
+				"doc-1").file(file))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.title").value("revised.txt"))
+				.andExpect(jsonPath("$.content").value("Revised content"));
+	}
+
+	@Test
+	void updateReturnsNotFoundWhenDocumentDoesNotExist() throws Exception {
+		given(documentService.updateFile(eq("project-1"), eq("missing"), any(), any(byte[].class)))
+				.willThrow(new DocumentNotFoundException("missing"));
+
+		MockMultipartFile file = new MockMultipartFile("file", "revised.txt", MediaType.TEXT_PLAIN_VALUE,
+				"Revised content".getBytes(StandardCharsets.UTF_8));
+
+		mockMvc.perform(multipart(HttpMethod.PUT, "/api/projects/{projectId}/documents/{documentId}", "project-1",
+				"missing").file(file))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void updateFromTextReturnsOkWithUpdatedBody() throws Exception {
+		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
+		Document updated = new Document("doc-1", "project-1", "Renamed", SourceType.TEXT, "Updated body", createdAt);
+		given(documentService.updateText(eq("project-1"), eq("doc-1"), any(IngestTextRequest.class)))
+				.willReturn(updated);
+
+		mockMvc.perform(put("/api/projects/{projectId}/documents/{documentId}/text", "project-1", "doc-1")
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{
+							"title": "Renamed",
+							"content": "Updated body"
+						}
+						"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.title").value("Renamed"));
+	}
+
+	@Test
+	void updateFromTextReturnsBadRequestWhenTitleIsMissing() throws Exception {
+		mockMvc.perform(put("/api/projects/{projectId}/documents/{documentId}/text", "project-1", "doc-1")
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{
+							"content": "Updated body"
+						}
+						"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[0].field").value("title"));
+	}
+
+	@Test
+	void deleteReturnsNoContent() throws Exception {
+		mockMvc.perform(delete("/api/projects/{projectId}/documents/{documentId}", "project-1", "doc-1"))
+				.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void deleteReturnsNotFoundWhenDocumentDoesNotExist() throws Exception {
+		doThrow(new DocumentNotFoundException("missing")).when(documentService).delete("project-1", "missing");
+
+		mockMvc.perform(delete("/api/projects/{projectId}/documents/{documentId}", "project-1", "missing"))
 				.andExpect(status().isNotFound());
 	}
 }
