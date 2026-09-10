@@ -51,6 +51,30 @@ public class DocumentService {
 		return document;
 	}
 
+	public Document updateFile(String projectId, String documentId, String filename, byte[] fileBytes) {
+		Document existing = findById(projectId, documentId);
+		validateFile(fileBytes);
+		ExtractedContent extracted = textExtractor.extract(filename, fileBytes);
+		Document updated = new Document(existing.id(), existing.projectId(), filename, extracted.sourceType(),
+				extracted.text(), existing.createdAt());
+		documents.put(updated.id(), updated);
+		return updated;
+	}
+
+	public Document updateText(String projectId, String documentId, IngestTextRequest request) {
+		Document existing = findById(projectId, documentId);
+		validateContentSize(request.content());
+		Document updated = new Document(existing.id(), existing.projectId(), request.title(), SourceType.TEXT,
+				request.content(), existing.createdAt());
+		documents.put(updated.id(), updated);
+		return updated;
+	}
+
+	public void delete(String projectId, String documentId) {
+		Document existing = findById(projectId, documentId);
+		documents.remove(existing.id());
+	}
+
 	private void validateFile(byte[] fileBytes) {
 		if (fileBytes.length == 0) {
 			throw new InvalidDocumentException("File must not be empty");
