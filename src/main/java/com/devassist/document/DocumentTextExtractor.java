@@ -3,6 +3,7 @@ package com.devassist.document;
 import java.io.ByteArrayInputStream;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.tika.Tika;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,9 @@ public class DocumentTextExtractor {
 	private static final Map<String, SourceType> BY_MEDIA_TYPE = Map.ofEntries(
 			Map.entry("text/plain", SourceType.TEXT),
 			Map.entry("text/markdown", SourceType.MARKDOWN),
+			// Tika resolves a plain-text body under a .md filename to this more specific,
+			// registered alias rather than the generic text/markdown.
+			Map.entry("text/x-web-markdown", SourceType.MARKDOWN),
 			Map.entry("application/pdf", SourceType.PDF),
 			Map.entry("application/msword", SourceType.WORD),
 			Map.entry("application/vnd.openxmlformats-officedocument.wordprocessingml.document", SourceType.WORD),
@@ -35,6 +39,13 @@ public class DocumentTextExtractor {
 			Map.entry("application/vnd.openxmlformats-officedocument.presentationml.presentation",
 					SourceType.POWERPOINT),
 			Map.entry("text/html", SourceType.HTML));
+
+	// Generic sentinels Tika returns when content-based detection is genuinely inconclusive
+	// (e.g. it couldn't identify anything more specific) - as opposed to a concrete, correctly
+	// identified type that simply isn't one of the 7 accepted formats.
+	private static final Set<String> INCONCLUSIVE_MEDIA_TYPES = Set.of(
+			"application/octet-stream",
+			"application/x-empty");
 
 	private final Tika tika;
 
@@ -52,15 +63,29 @@ public class DocumentTextExtractor {
 			throw new InvalidDocumentException("Unsupported file type: " + filename);
 		}
 
-		String detected = tika.detect(bytes, filename);
-		SourceType byContent = BY_MEDIA_TYPE.get(stripParameters(detected));
+		String detected = stripParameters(tika.detect(bytes, filename));
+		SourceType byContent = BY_MEDIA_TYPE.get(detected);
 
-		// Markdown and HTML are both detected as text/* by content, so an
-		// extension that agrees with a text-family detection is trusted.
-		SourceType resolved = (byContent != null) ? byContent : byExtension;
-		if (byContent != null && byContent != byExtension && !isTextFamily(byContent, byExtension)) {
+		SourceType resolved;
+		if (byContent != null) {
+			resolved = byContent;
+			// Markdown and HTML are both detected as text/* by content, so an
+			// extension that agrees with a text-family detection is trusted.
+			if (byContent != byExtension && !isTextFamily(byContent, byExtension)) {
+				throw new InvalidDocumentException(
+						"File content (" + detected + ") does not match extension: " + filename);
+			}
+		}
+		else if (INCONCLUSIVE_MEDIA_TYPES.contains(detected)) {
+			// Detection genuinely couldn't tell - fall back to trusting the extension.
+			resolved = byExtension;
+		}
+		else {
+			// A concrete, correctly identified type that isn't one of the 7 accepted formats
+			// (e.g. RTF, JPEG, ZIP) must be rejected outright, even if the extension is one we
+			// accept and even if a parser could technically pull some text out of it (BR-15).
 			throw new InvalidDocumentException(
-					"File content (" + detected + ") does not match extension: " + filename);
+					"File content (" + detected + ") is not an accepted document type: " + filename);
 		}
 
 		try {

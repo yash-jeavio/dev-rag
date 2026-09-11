@@ -123,6 +123,21 @@ class DocumentTextExtractorTest {
 				.isInstanceOf(InvalidDocumentException.class);
 	}
 
+	@Test
+	void rejectsConcreteDetectedTypeNotInAcceptedSetEvenWithAcceptedExtension() {
+		// A well-formed RTF body: Tika detects application/rtf (a concrete, non-inconclusive
+		// type outside the 7 accepted types) AND its RTF parser successfully extracts readable
+		// text ("Hello RTF"). That combination is what exposes the bug: a detection-vs-extension
+		// reconciliation that only rejects mismatches when the detected type happens to be one
+		// of the accepted ones would let this through as TEXT, because parsing "succeeds" with
+		// non-blank output. The type must be rejected before extraction is even attempted.
+		byte[] rtfBytes = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Arial;}}\\f0\\fs24 Hello RTF\\par}"
+				.getBytes(StandardCharsets.UTF_8);
+
+		assertThatThrownBy(() -> extractor.extract("notes.txt", rtfBytes))
+				.isInstanceOf(InvalidDocumentException.class);
+	}
+
 	private static byte[] sampleDocxBytes(String text) throws IOException {
 		try (XWPFDocument document = new XWPFDocument()) {
 			XWPFParagraph paragraph = document.createParagraph();
