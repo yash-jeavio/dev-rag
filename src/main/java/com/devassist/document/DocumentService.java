@@ -1,8 +1,12 @@
 package com.devassist.document;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,8 +32,15 @@ public class DocumentService {
 		projectService.findById(projectId);
 		validateFile(fileBytes);
 		ExtractedContent extracted = textExtractor.extract(filename, fileBytes);
+
+		String contentHash = sha256(extracted.text());
+		Optional<Document> existing = findByHash(projectId, contentHash);
+		if (existing.isPresent()) {
+			return existing.get();
+		}
+
 		Document document = new Document(UUID.randomUUID().toString(), projectId, filename, extracted.sourceType(),
-				extracted.text(), Instant.now());
+				extracted.text(), contentHash, Instant.now());
 		documents.put(document.id(), document);
 		return document;
 	}
@@ -37,8 +48,15 @@ public class DocumentService {
 	public Document ingestText(String projectId, IngestTextRequest request) {
 		projectService.findById(projectId);
 		validateContentSize(request.content());
+
+		String contentHash = sha256(request.content());
+		Optional<Document> existing = findByHash(projectId, contentHash);
+		if (existing.isPresent()) {
+			return existing.get();
+		}
+
 		Document document = new Document(UUID.randomUUID().toString(), projectId, request.title(), SourceType.TEXT,
-				request.content(), Instant.now());
+				request.content(), contentHash, Instant.now());
 		documents.put(document.id(), document);
 		return document;
 	}
@@ -57,7 +75,7 @@ public class DocumentService {
 		validateFile(fileBytes);
 		ExtractedContent extracted = textExtractor.extract(filename, fileBytes);
 		Document updated = new Document(existing.id(), existing.projectId(), filename, extracted.sourceType(),
-				extracted.text(), existing.createdAt());
+				extracted.text(), sha256(extracted.text()), existing.createdAt());
 		documents.put(updated.id(), updated);
 		return updated;
 	}
@@ -66,7 +84,7 @@ public class DocumentService {
 		Document existing = findById(projectId, documentId);
 		validateContentSize(request.content());
 		Document updated = new Document(existing.id(), existing.projectId(), request.title(), SourceType.TEXT,
-				request.content(), existing.createdAt());
+				request.content(), sha256(request.content()), existing.createdAt());
 		documents.put(updated.id(), updated);
 		return updated;
 	}
@@ -89,5 +107,22 @@ public class DocumentService {
 		if (content.getBytes(StandardCharsets.UTF_8).length > MAX_CONTENT_BYTES) {
 			throw new InvalidDocumentException("Content exceeds the maximum allowed size of 10MB");
 		}
+	}
+
+	private static String sha256(String content) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			return HexFormat.of().formatHex(digest.digest(content.getBytes(StandardCharsets.UTF_8)));
+		}
+		catch (NoSuchAlgorithmException ex) {
+			throw new IllegalStateException("SHA-256 is required but unavailable", ex);
+		}
+	}
+
+	private Optional<Document> findByHash(String projectId, String contentHash) {
+		return documents.values().stream()
+				.filter(document -> document.projectId().equals(projectId))
+				.filter(document -> document.contentHash().equals(contentHash))
+				.findFirst();
 	}
 }

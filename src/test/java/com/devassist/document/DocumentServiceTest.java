@@ -214,4 +214,33 @@ class DocumentServiceTest {
 		assertThatThrownBy(() -> documentService.delete(otherProject.id(), created.id()))
 				.isInstanceOf(DocumentNotFoundException.class);
 	}
+
+	@Test
+	void ingestingIdenticalContentTwiceReturnsTheSameDocument() {
+		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "same body"));
+		Document second = documentService.ingestText(existingProjectId,
+				new IngestTextRequest("notes again", "same body"));
+
+		assertThat(second.id()).isEqualTo(first.id());
+		assertThat(second.title()).isEqualTo("notes");
+	}
+
+	@Test
+	void identicalContentInDifferentProjectsCreatesTwoDocuments() {
+		String otherProjectId = projectService
+				.create(new CreateProjectRequest("Other", null, "Java", "https://example.com/x")).id();
+
+		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "same body"));
+		Document second = documentService.ingestText(otherProjectId, new IngestTextRequest("notes", "same body"));
+
+		assertThat(second.id()).isNotEqualTo(first.id());
+	}
+
+	@Test
+	void differentContentCreatesDistinctDocuments() {
+		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("a", "body one"));
+		Document second = documentService.ingestText(existingProjectId, new IngestTextRequest("b", "body two"));
+
+		assertThat(second.id()).isNotEqualTo(first.id());
+	}
 }

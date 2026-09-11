@@ -41,7 +41,7 @@ class DocumentControllerTest {
 	void createFromFileReturnsCreatedWithLocationAndBody() throws Exception {
 		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
 		Document document = new Document("doc-1", "project-1", "notes.txt", SourceType.TEXT, "Hello world",
-				createdAt);
+				"hash-1", createdAt);
 		given(documentService.ingestFile(eq("project-1"), eq("notes.txt"), any(byte[].class))).willReturn(document);
 
 		MockMultipartFile file = new MockMultipartFile("file", "notes.txt", MediaType.TEXT_PLAIN_VALUE,
@@ -85,7 +85,7 @@ class DocumentControllerTest {
 	void createFromTextReturnsCreatedWithLocationAndBody() throws Exception {
 		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
 		Document document = new Document("doc-1", "project-1", "Meeting Notes", SourceType.TEXT, "Body text",
-				createdAt);
+				"hash-1", createdAt);
 		given(documentService.ingestText(eq("project-1"), any(IngestTextRequest.class))).willReturn(document);
 
 		mockMvc.perform(post("/api/projects/{projectId}/documents/text", "project-1")
@@ -116,7 +116,7 @@ class DocumentControllerTest {
 	void getByIdReturnsOkWhenDocumentExists() throws Exception {
 		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
 		Document document = new Document("doc-1", "project-1", "notes.txt", SourceType.TEXT, "Hello world",
-				createdAt);
+				"hash-1", createdAt);
 		given(documentService.findById("project-1", "doc-1")).willReturn(document);
 
 		mockMvc.perform(get("/api/projects/{projectId}/documents/{documentId}", "project-1", "doc-1"))
@@ -136,7 +136,7 @@ class DocumentControllerTest {
 	void updateReturnsOkWithUpdatedBody() throws Exception {
 		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
 		Document updated = new Document("doc-1", "project-1", "revised.txt", SourceType.TEXT, "Revised content",
-				createdAt);
+				"hash-1", createdAt);
 		given(documentService.updateFile(eq("project-1"), eq("doc-1"), eq("revised.txt"), any(byte[].class)))
 				.willReturn(updated);
 
@@ -166,7 +166,8 @@ class DocumentControllerTest {
 	@Test
 	void updateFromTextReturnsOkWithUpdatedBody() throws Exception {
 		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
-		Document updated = new Document("doc-1", "project-1", "Renamed", SourceType.TEXT, "Updated body", createdAt);
+		Document updated = new Document("doc-1", "project-1", "Renamed", SourceType.TEXT, "Updated body", "hash-1",
+				createdAt);
 		given(documentService.updateText(eq("project-1"), eq("doc-1"), any(IngestTextRequest.class)))
 				.willReturn(updated);
 

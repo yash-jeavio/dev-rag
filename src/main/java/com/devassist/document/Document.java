@@ -8,6 +8,7 @@ public record Document(
 		String title,
 		SourceType sourceType,
 		String content,
+		String contentHash,
 		Instant createdAt
 ) {
 }
