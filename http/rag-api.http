@@ -1,0 +1,115 @@
+### DevAssist RAG API — end-to-end request file (Task 13)
+###
+### Prerequisites:
+###   - Ollama running locally with `nomic-embed-text` pulled (http://localhost:11434)
+###   - GEMINI_API_KEY exported before starting the app (required for EVERY request below,
+###     including the "unanswerable question" one — see note before that block)
+###   - App started with `./mvnw spring-boot:run` (defaults to port 8080; adjust the
+###     @baseUrl below if you run on a different port)
+###
+### Verification status as of 2026-09-14 (no GEMINI_API_KEY available in that run):
+###   - Project creation, ingestion, deduplication, index-status, listing, 404s: VERIFIED
+###     against real Ollama embeddings on port 8089.
+###   - Query and summarize blocks below: NOT VERIFIED. The application's chat model bean
+###     (spring.ai.model.chat=google-genai) is eagerly constructed as part of the
+###     constructor-injected dependency graph for RagQueryController/SummarizationController,
+###     and construction fails immediately if GEMINI_API_KEY is absent/invalid — before any
+###     retrieval logic runs, before the model is ever called, and regardless of which
+###     question is asked. This means neither the ANSWERED path nor the INSUFFICIENT_CONTEXT
+###     path could be exercised end-to-end in that run; both returned HTTP 500. See
+###     task-13-report.md for full detail. Once a real key is set, re-run every block below
+###     top to bottom.
+
+@baseUrl = http://localhost:8080
+
+### Create a project
+POST {{baseUrl}}/api/projects
+Content-Type: application/json
+
+{"name":"RAG Demo","description":"Capstone","language":"Java","repositoryUrl":"https://github.com/example/devassist"}
+
+> {% client.global.set("projectId", response.body.id); %}
+
+### Ingest a document
+POST {{baseUrl}}/api/projects/{{projectId}}/documents/text
+Content-Type: application/json
+
+{"title":"refund-policy","content":"Customers may request a refund within 30 days of purchase. Refunds are issued to the original payment method within 5 business days."}
+
+> {%
+    client.test("Created", () => response.status === 201);
+    client.test("Not deduplicated on first ingest", () => response.body.deduplicated === false);
+    client.global.set("documentId", response.body.id);
+%}
+
+### Ingest the SAME content again - expect deduplication (BR-03)
+POST {{baseUrl}}/api/projects/{{projectId}}/documents/text
+Content-Type: application/json
+
+{"title":"refund-policy-copy","content":"Customers may request a refund within 30 days of purchase. Refunds are issued to the original payment method within 5 business days."}
+
+> {%
+    client.test("OK not Created", () => response.status === 200);
+    client.test("Deduplicated", () => response.body.deduplicated === true);
+    client.test("Same id", () => response.body.id === client.global.get("documentId"));
+%}
+
+### Check index status - expect INDEXED with chunkCount > 0
+GET {{baseUrl}}/api/projects/{{projectId}}/documents/{{documentId}}/index-status
+
+> {%
+    client.test("Indexed", () => response.body.status === "INDEXED");
+    client.test("Has chunks", () => response.body.chunkCount > 0);
+%}
+
+### Ask an answerable question
+### NOT VERIFIED without GEMINI_API_KEY - see header note. Requires a real key to reach
+### the retrieval/generation logic at all.
+POST {{baseUrl}}/api/projects/{{projectId}}/query
+Content-Type: application/json
+
+{"question":"How long do customers have to request a refund?"}
+
+> {%
+    client.test("Answered", () => response.body.status === "ANSWERED");
+    client.test("Has sources", () => response.body.sources.length > 0);
+%}
+
+### Ask an unanswerable question - expect INSUFFICIENT_CONTEXT, no model call (BR-08)
+### NOT VERIFIED without GEMINI_API_KEY - see header note. In this codebase the chat
+### model bean must be constructible just to reach RagQueryController at all (constructor
+### injection + eager singleton graph), so this block cannot currently be exercised
+### independently of having a working key, even though the *code* for this branch
+### (RagQueryService.answer) never calls GenerationService when retrieval is empty.
+POST {{baseUrl}}/api/projects/{{projectId}}/query
+Content-Type: application/json
+
+{"question":"What is the capital of France?"}
+
+> {% client.test("Insufficient", () => response.body.status === "INSUFFICIENT_CONTEXT"); %}
+
+### Summarise the document
+### NOT VERIFIED without GEMINI_API_KEY - see header note.
+POST {{baseUrl}}/api/projects/{{projectId}}/documents/{{documentId}}/summarize
+Content-Type: application/json
+
+{"instruction":"Focus on timeframes."}
+
+> {%
+    client.test("Not truncated", () => response.body.truncated === false);
+%}
+
+### List documents
+GET {{baseUrl}}/api/projects/{{projectId}}/documents
+
+> {% client.test("Has one document", () => response.body.length === 1); %}
+
+### List projects
+GET {{baseUrl}}/api/projects
+
+> {% client.test("Has one project", () => response.body.length === 1); %}
+
+### Index status for a non-existent document - expect 404, not 500
+GET {{baseUrl}}/api/projects/{{projectId}}/documents/00000000-0000-0000-0000-000000000000/index-status
+
+> {% client.test("Not found", () => response.status === 404); %}
