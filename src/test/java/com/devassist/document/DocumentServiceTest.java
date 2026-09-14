@@ -400,4 +400,16 @@ class DocumentServiceTest {
 		assertThatThrownBy(() -> documentService.findByProject("no-such-project"))
 				.isInstanceOf(ProjectNotFoundException.class);
 	}
+
+	@Test
+	void listOrdersDocumentsByCreationTime() {
+		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("first", "body one"))
+				.document();
+		Document second = documentService.ingestText(existingProjectId, new IngestTextRequest("second", "body two"))
+				.document();
+
+		List<Document> result = documentService.findByProject(existingProjectId);
+
+		assertThat(result).extracting(Document::id).containsExactly(first.id(), second.id());
+	}
 }

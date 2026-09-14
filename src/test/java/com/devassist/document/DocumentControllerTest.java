@@ -2,6 +2,7 @@ package com.devassist.document;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -230,5 +231,36 @@ class DocumentControllerTest {
 
 		mockMvc.perform(delete("/api/projects/{projectId}/documents/{documentId}", "project-1", "missing"))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listReturnsOkWithDocumentsForKnownProject() throws Exception {
+		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
+		Document document = new Document("doc-1", "project-1", "notes.txt", SourceType.TEXT, "Hello world",
+				"hash-1", createdAt);
+		given(documentService.findByProject("project-1")).willReturn(List.of(document));
+
+		mockMvc.perform(get("/api/projects/{projectId}/documents", "project-1"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(1))
+				.andExpect(jsonPath("$[0].id").value("doc-1"))
+				.andExpect(jsonPath("$[0].title").value("notes.txt"));
+	}
+
+	@Test
+	void listReturnsNotFoundWhenProjectDoesNotExist() throws Exception {
+		given(documentService.findByProject("missing")).willThrow(new ProjectNotFoundException("missing"));
+
+		mockMvc.perform(get("/api/projects/{projectId}/documents", "missing"))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listReturnsEmptyArrayWhenProjectHasNoDocuments() throws Exception {
+		given(documentService.findByProject("project-1")).willReturn(List.of());
+
+		mockMvc.perform(get("/api/projects/{projectId}/documents", "project-1"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(0));
 	}
 }
