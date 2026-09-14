@@ -129,4 +129,42 @@ class ChunkingServiceTest {
 		assertThat(chunks).isNotEmpty();
 		assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.length()).isLessThanOrEqualTo(20));
 	}
+
+	// All the tests above use whitespace-free content, which only ever exercises the
+	// hard-cut fallback. Real prose with punctuation forces preferredBoundary's
+	// sentence-terminator branch to fire, which is where a match starting exactly at
+	// hardEnd can push `end` past the configured size.
+	@Test
+	void neverProducesChunkLongerThanConfiguredSizeWithPunctuation() {
+		String text = "The cat sat on the mountain? The dog ran fast. The dog barked loud? "
+				+ "The fox jumped over the log. A brown bear slept? The owl flew away tonight.";
+
+		List<String> chunks = newService(9, 3).chunk(text);
+
+		assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.length()).isLessThanOrEqualTo(9));
+	}
+
+	// Same whitespace-free blind spot for the overlap invariant: a boundary cut that
+	// lands on ". " includes the trailing space in the raw substring, which strip()
+	// then trims from the STORED chunk — but if the next start is computed from the
+	// un-stripped raw end, the two stored strings end up offset by that trimmed
+	// whitespace, so they share one character fewer than configured. Distinct words
+	// (not a repeated character) so an off-by-one can't hide behind a coincidental
+	// match, and reconstruction proves no character is duplicated or lost either.
+	@Test
+	void consecutiveChunksShareExactlyTheConfiguredOverlapWithRealisticProse() {
+		String text = "Alpha bravo charlie delta echo foxtrot golf hotel india juliet? "
+				+ "Kilo lima mike november oscar papa. Quebec romeo sierra tango uniform victor whiskey!";
+
+		List<String> chunks = newService(20, 6).chunk(text);
+
+		assertThat(chunks).hasSizeGreaterThan(1);
+		for (int i = 1; i < chunks.size(); i++) {
+			String previous = chunks.get(i - 1);
+			assertThat(previous.length()).isGreaterThanOrEqualTo(6);
+			String tail = previous.substring(previous.length() - 6);
+			assertThat(chunks.get(i)).as("chunk %d should start with the exact 6-char tail of chunk %d", i, i - 1)
+					.startsWith(tail);
+		}
+	}
 }
