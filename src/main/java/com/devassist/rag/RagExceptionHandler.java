@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -33,8 +34,13 @@ public class RagExceptionHandler {
 	}
 
 	// A model or embedding provider being unreachable is not the caller's fault
-	// and is not permanent, so it is 503 rather than 500.
-	@ExceptionHandler(NonTransientAiException.class)
+	// and is not permanent, so it is 503 rather than 500. NonTransientAiException
+	// covers a live call that fails (e.g. quota/auth rejected by the provider);
+	// BeanCreationException covers the chat model bean itself never getting
+	// built in the first place (e.g. GEMINI_API_KEY missing) - GenerationService
+	// and SummaryGenerator resolve it lazily via ObjectProvider, so that failure
+	// now surfaces here at call time instead of at application startup.
+	@ExceptionHandler({ NonTransientAiException.class, BeanCreationException.class })
 	@ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
 	public Map<String, Object> handleAiFailure(RuntimeException ex) {
 		return Map.of("status", HttpStatus.SERVICE_UNAVAILABLE.value(),

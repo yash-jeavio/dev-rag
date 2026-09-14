@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -70,5 +71,24 @@ class RagQueryControllerTest {
 				.content("{\"question\":\"q\"}"))
 				.andExpect(status().isServiceUnavailable())
 				.andExpect(jsonPath("$.message").value("AI provider unavailable: model unreachable"));
+	}
+
+	// Regression test for the task-13 finding: with no GEMINI_API_KEY, the
+	// Gemini ChatModel/Client bean fails to build the first time a query
+	// actually needs it (GenerationService resolves it lazily via
+	// ObjectProvider - see GeminiLazyChatModelConfiguration), surfacing as a
+	// BeanCreationException at that call site rather than at startup. This
+	// must map to the same 503 as a live provider failure, not a bare 500.
+	@Test
+	void returnsServiceUnavailableWhenTheChatModelBeanFailsToBuild() throws Exception {
+		when(queryService.answer(anyString(), anyString()))
+				.thenThrow(new BeanCreationException("googleGenAiClient", "Incomplete Google GenAI configuration"));
+
+		mockMvc.perform(post("/api/projects/proj-1/query")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"question\":\"q\"}"))
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.message").value(
+						org.hamcrest.Matchers.containsString("Incomplete Google GenAI configuration")));
 	}
 }
