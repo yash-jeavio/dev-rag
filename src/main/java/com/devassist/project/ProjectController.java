@@ -1,6 +1,7 @@
 package com.devassist.project;
 
 import java.net.URI;
+import java.util.List;
 
 import jakarta.validation.Valid;
 
@@ -32,5 +33,10 @@ public class ProjectController {
 	public ResponseEntity<ProjectResponse> getById(@PathVariable String id) {
 		Project project = projectService.findById(id);
 		return ResponseEntity.ok(ProjectResponse.from(project));
+	}
+
+	@GetMapping
+	public ResponseEntity<List<ProjectResponse>> list() {
+		return ResponseEntity.ok(projectService.findAll().stream().map(ProjectResponse::from).toList());
 	}
 }

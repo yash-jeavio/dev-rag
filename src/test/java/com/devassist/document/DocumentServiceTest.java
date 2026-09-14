@@ -1,6 +1,7 @@
 package com.devassist.document;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -374,5 +375,29 @@ class DocumentServiceTest {
 		documentService.delete(existingProjectId, document.id());
 
 		verify(eventPublisher).publishEvent(new DocumentDeletedEvent(existingProjectId, document.id()));
+	}
+
+	@Test
+	void listsOnlyDocumentsBelongingToTheProject() {
+		String otherProjectId = projectService
+				.create(new CreateProjectRequest("Other", null, "Java", "https://example.com/x")).id();
+		Document mine = documentService.ingestText(existingProjectId, new IngestTextRequest("mine", "body one"))
+				.document();
+		documentService.ingestText(otherProjectId, new IngestTextRequest("theirs", "body two"));
+
+		List<Document> result = documentService.findByProject(existingProjectId);
+
+		assertThat(result).extracting(Document::id).containsExactly(mine.id());
+	}
+
+	@Test
+	void listingAnEmptyProjectReturnsEmptyListNotError() {
+		assertThat(documentService.findByProject(existingProjectId)).isEmpty();
+	}
+
+	@Test
+	void listingDocumentsOfUnknownProjectThrows() {
+		assertThatThrownBy(() -> documentService.findByProject("no-such-project"))
+				.isInstanceOf(ProjectNotFoundException.class);
 	}
 }

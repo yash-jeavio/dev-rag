@@ -1,5 +1,7 @@
 package com.devassist.project;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -168,5 +170,26 @@ class ProjectControllerTest {
 
 		mockMvc.perform(get("/api/projects/{id}", "missing"))
 				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listsAllProjects() throws Exception {
+		given(projectService.findAll()).willReturn(List.of(
+				new Project("p1", "First", null, "Java", "https://example.com/1"),
+				new Project("p2", "Second", null, "Go", "https://example.com/2")));
+
+		mockMvc.perform(get("/api/projects"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(2))
+				.andExpect(jsonPath("$[0].name").value("First"));
+	}
+
+	@Test
+	void listingReturnsEmptyArrayWhenNoProjectsExist() throws Exception {
+		given(projectService.findAll()).willReturn(List.of());
+
+		mockMvc.perform(get("/api/projects"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(0));
 	}
 }

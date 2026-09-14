@@ -4,7 +4,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -95,6 +97,14 @@ public class DocumentService {
 		documents.put(updated.id(), updated);
 		eventPublisher.publishEvent(new DocumentUpdatedEvent(updated));
 		return updated;
+	}
+
+	public List<Document> findByProject(String projectId) {
+		projectService.findById(projectId);
+		return documents.values().stream()
+				.filter(document -> document.projectId().equals(projectId))
+				.sorted(Comparator.comparing(Document::createdAt))
+				.toList();
 	}
 
 	public void delete(String projectId, String documentId) {

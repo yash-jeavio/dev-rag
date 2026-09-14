@@ -2,6 +2,7 @@ package com.devassist.document;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.List;
 
 import jakarta.validation.Valid;
 
@@ -57,6 +58,12 @@ public class DocumentController {
 			@PathVariable String documentId) {
 		Document document = documentService.findById(projectId, documentId);
 		return ResponseEntity.ok(DocumentResponse.from(document));
+	}
+
+	@GetMapping
+	public ResponseEntity<List<DocumentResponse>> list(@PathVariable String projectId) {
+		return ResponseEntity.ok(
+				documentService.findByProject(projectId).stream().map(DocumentResponse::from).toList());
 	}
 
 	@PutMapping(path = "/{documentId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

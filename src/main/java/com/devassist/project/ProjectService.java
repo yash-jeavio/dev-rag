@@ -1,5 +1,6 @@
 package com.devassist.project;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,5 +26,9 @@ public class ProjectService {
 			throw new ProjectNotFoundException(id);
 		}
 		return project;
+	}
+
+	public List<Project> findAll() {
+		return List.copyOf(projects.values());
 	}
 }
