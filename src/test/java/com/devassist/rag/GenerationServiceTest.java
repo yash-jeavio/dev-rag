@@ -11,6 +11,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.beans.factory.ObjectProvider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -28,7 +29,11 @@ class GenerationServiceTest {
 		when(chatModel.call(promptCaptor.capture()))
 				.thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("Within 30 days. [1]")))));
 
-		GenerationService service = new GenerationService(ChatClient.builder(chatModel));
+		@SuppressWarnings("unchecked")
+		ObjectProvider<ChatClient.Builder> builderProvider = mock(ObjectProvider.class);
+		when(builderProvider.getObject()).thenReturn(ChatClient.builder(chatModel));
+
+		GenerationService service = new GenerationService(builderProvider);
 		String answer = service.generate("[1] refund text", "refund window?");
 
 		assertThat(answer).isEqualTo("Within 30 days. [1]");

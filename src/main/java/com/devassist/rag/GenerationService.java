@@ -1,6 +1,7 @@
 package com.devassist.rag;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,13 +19,21 @@ public class GenerationService {
 			3. Cite the context blocks you used with markers like [1] or [2].
 			""";
 
-	private final ChatClient chatClient;
+	// Resolved on demand rather than injected as a plain ChatClient.Builder: a
+	// direct constructor dependency would force Spring to build the Gemini
+	// ChatModel/Client (and validate GEMINI_API_KEY) as soon as this
+	// (non-lazy) service is created, i.e. at application startup, even for
+	// requests that never call the model at all (BR-08). ObjectProvider defers
+	// that resolution to the moment a chat call is actually made. See
+	// GeminiLazyChatModelConfiguration for the other half of this fix.
+	private final ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
 
-	public GenerationService(ChatClient.Builder chatClientBuilder) {
-		this.chatClient = chatClientBuilder.defaultSystem(SYSTEM_PROMPT).build();
+	public GenerationService(ObjectProvider<ChatClient.Builder> chatClientBuilderProvider) {
+		this.chatClientBuilderProvider = chatClientBuilderProvider;
 	}
 
 	public String generate(String context, String question) {
+		ChatClient chatClient = chatClientBuilderProvider.getObject().defaultSystem(SYSTEM_PROMPT).build();
 		return chatClient.prompt()
 				.user("Context:\n%s\n\nQuestion: %s".formatted(context, question))
 				.call()
