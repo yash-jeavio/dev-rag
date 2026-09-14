@@ -13,7 +13,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.devassist.document.DocumentNotFoundException;
 import com.devassist.project.ProjectNotFoundException;
 
-@RestControllerAdvice(assignableTypes = { IndexStatusController.class, RagQueryController.class })
+@RestControllerAdvice(assignableTypes = { IndexStatusController.class, RagQueryController.class,
+		SummarizationController.class })
 public class RagExceptionHandler {
 
 	@ExceptionHandler({ ProjectNotFoundException.class, DocumentNotFoundException.class })
