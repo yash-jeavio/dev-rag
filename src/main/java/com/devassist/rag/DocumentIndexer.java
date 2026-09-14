@@ -44,15 +44,40 @@ public class DocumentIndexer {
 	@EventListener
 	public void onUpdated(DocumentUpdatedEvent event) {
 		// BR-04: delete before re-indexing, or a delete issued after the new
-		// chunks are written would wipe out what was just added.
+		// chunks are written would wipe out what was just added. A failed
+		// delete must also abort the re-index rather than fall through: adding
+		// new chunks on top of an undeleted old set would leave both
+		// retrievable, and recording INDEXED afterwards would be a false
+		// success with nothing but logs to reveal the mix-up.
 		Document document = event.document();
-		deleteChunks(document.id());
+		try {
+			deleteChunks(document.id());
+		}
+		catch (RuntimeException ex) {
+			log.warn("Failed to delete prior chunks for document {}; aborting re-index", document.id(), ex);
+			statusService.record(IndexStatus.failed(document.id(), "failed to delete previous chunks: " + ex.getMessage()));
+			return;
+		}
 		index(document);
 	}
 
 	@EventListener
 	public void onDeleted(DocumentDeletedEvent event) {
-		deleteChunks(event.documentId());
+		// BR-05: a failed delete leaves orphan chunks retrievable with no
+		// record of it, so the status entry is kept (never removed) rather
+		// than erased on failure, and logged at ERROR rather than WARN. This
+		// is an accepted limitation of the in-memory store, not a state to
+		// model: the status endpoint 404s via documentService.findById before
+		// it would ever read a status for a deleted document, so no new
+		// status value here would be observable through the API anyway.
+		try {
+			deleteChunks(event.documentId());
+		}
+		catch (RuntimeException ex) {
+			log.error("Failed to delete chunks for document {}; orphan chunks remain in the vector store,"
+					+ " discoverable only via this log", event.documentId(), ex);
+			return;
+		}
 		statusService.remove(event.documentId());
 	}
 
@@ -85,11 +110,6 @@ public class DocumentIndexer {
 	}
 
 	private void deleteChunks(String documentId) {
-		try {
-			vectorStore.delete(new FilterExpressionBuilder().eq("documentId", documentId).build());
-		}
-		catch (RuntimeException ex) {
-			log.warn("Failed to delete chunks for document {}", documentId, ex);
-		}
+		vectorStore.delete(new FilterExpressionBuilder().eq("documentId", documentId).build());
 	}
 }
