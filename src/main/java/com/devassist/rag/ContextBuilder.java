@@ -38,7 +38,7 @@ public class ContextBuilder {
 		for (int i = 0; i < chunks.size(); i++) {
 			Document chunk = chunks.get(i);
 			sources.add(new SourceReference(
-					String.valueOf(chunk.getMetadata().get("documentId")),
+					String.valueOf(chunk.getMetadata().getOrDefault("documentId", "unknown")),
 					title(chunk),
 					chunkIndex(chunk),
 					similarity(chunk),

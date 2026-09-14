@@ -25,8 +25,10 @@ class ContextBuilderTest {
 				chunk("first text", "doc-1", "a.md", 0),
 				chunk("second text", "doc-2", "b.md", 0)));
 
-		assertThat(context).contains("[1]").contains("first text");
-		assertThat(context).contains("[2]").contains("second text");
+		// Assert marker and text adjacency, not independent substring presence,
+		// so a swapped pairing ([1] next to "second text") would fail here.
+		assertThat(context).contains("[1] first text");
+		assertThat(context).contains("[2] second text");
 	}
 
 	@Test
@@ -130,5 +132,30 @@ class ContextBuilderTest {
 				List.of(chunk(oneOver, "doc-1", "a.md", 0)), "[1]");
 
 		assertThat(sources.get(0).excerpt()).isEqualTo("0123456789");
+	}
+
+	@Test
+	void carriesRealSimilarityScoreThrough() {
+		Document scored = Document.builder()
+				.text("scored content")
+				.metadata(Map.of(
+						"projectId", "proj-1", "documentId", "doc-1", "title", "a.md",
+						"sourceType", "TEXT", "chunkIndex", 0))
+				.score(0.82)
+				.build();
+
+		List<SourceReference> sources = builder.toSources(List.of(scored), "[1]");
+
+		assertThat(sources.get(0).similarity()).isEqualTo(0.82);
+	}
+
+	@Test
+	void nullAnswerLeavesEverySourceUncitedWithoutThrowing() {
+		List<SourceReference> sources = builder.toSources(
+				List.of(chunk("first", "doc-1", "a.md", 0), chunk("second", "doc-2", "b.md", 1)),
+				null);
+
+		assertThat(sources).hasSize(2);
+		assertThat(sources).allMatch(source -> !source.cited());
 	}
 }
