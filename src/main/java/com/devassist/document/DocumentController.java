@@ -31,17 +31,25 @@ public class DocumentController {
 	@PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public ResponseEntity<DocumentResponse> create(@PathVariable String projectId,
 			@RequestParam("file") MultipartFile file) throws IOException {
-		Document document = documentService.ingestFile(projectId, file.getOriginalFilename(), file.getBytes());
-		return ResponseEntity.created(URI.create("/api/projects/" + projectId + "/documents/" + document.id()))
-				.body(DocumentResponse.from(document));
+		IngestResult result = documentService.ingestFile(projectId, file.getOriginalFilename(), file.getBytes());
+		return ingestResponse(projectId, result);
 	}
 
 	@PostMapping(path = "/text", consumes = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<DocumentResponse> createFromText(@PathVariable String projectId,
 			@Valid @RequestBody IngestTextRequest request) {
-		Document document = documentService.ingestText(projectId, request);
+		IngestResult result = documentService.ingestText(projectId, request);
+		return ingestResponse(projectId, result);
+	}
+
+	private ResponseEntity<DocumentResponse> ingestResponse(String projectId, IngestResult result) {
+		Document document = result.document();
+		DocumentResponse body = DocumentResponse.from(document, result.deduplicated());
+		if (result.deduplicated()) {
+			return ResponseEntity.ok(body);
+		}
 		return ResponseEntity.created(URI.create("/api/projects/" + projectId + "/documents/" + document.id()))
-				.body(DocumentResponse.from(document));
+				.body(body);
 	}
 
 	@GetMapping("/{documentId}")

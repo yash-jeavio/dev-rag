@@ -28,7 +28,7 @@ public class DocumentService {
 		this.textExtractor = textExtractor;
 	}
 
-	public Document ingestFile(String projectId, String filename, byte[] fileBytes) {
+	public IngestResult ingestFile(String projectId, String filename, byte[] fileBytes) {
 		projectService.findById(projectId);
 		validateFile(fileBytes);
 		ExtractedContent extracted = textExtractor.extract(filename, fileBytes);
@@ -36,29 +36,29 @@ public class DocumentService {
 		String contentHash = sha256(extracted.text());
 		Optional<Document> existing = findByHash(projectId, contentHash);
 		if (existing.isPresent()) {
-			return existing.get();
+			return new IngestResult(existing.get(), true);
 		}
 
 		Document document = new Document(UUID.randomUUID().toString(), projectId, filename, extracted.sourceType(),
 				extracted.text(), contentHash, Instant.now());
 		documents.put(document.id(), document);
-		return document;
+		return new IngestResult(document, false);
 	}
 
-	public Document ingestText(String projectId, IngestTextRequest request) {
+	public IngestResult ingestText(String projectId, IngestTextRequest request) {
 		projectService.findById(projectId);
 		validateContentSize(request.content());
 
 		String contentHash = sha256(request.content());
 		Optional<Document> existing = findByHash(projectId, contentHash);
 		if (existing.isPresent()) {
-			return existing.get();
+			return new IngestResult(existing.get(), true);
 		}
 
 		Document document = new Document(UUID.randomUUID().toString(), projectId, request.title(), SourceType.TEXT,
 				request.content(), contentHash, Instant.now());
 		documents.put(document.id(), document);
-		return document;
+		return new IngestResult(document, false);
 	}
 
 	public Document findById(String projectId, String documentId) {

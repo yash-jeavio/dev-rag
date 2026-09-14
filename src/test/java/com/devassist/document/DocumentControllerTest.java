@@ -42,7 +42,8 @@ class DocumentControllerTest {
 		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
 		Document document = new Document("doc-1", "project-1", "notes.txt", SourceType.TEXT, "Hello world",
 				"hash-1", createdAt);
-		given(documentService.ingestFile(eq("project-1"), eq("notes.txt"), any(byte[].class))).willReturn(document);
+		given(documentService.ingestFile(eq("project-1"), eq("notes.txt"), any(byte[].class)))
+				.willReturn(new IngestResult(document, false));
 
 		MockMultipartFile file = new MockMultipartFile("file", "notes.txt", MediaType.TEXT_PLAIN_VALUE,
 				"Hello world".getBytes(StandardCharsets.UTF_8));
@@ -53,7 +54,8 @@ class DocumentControllerTest {
 				.andExpect(jsonPath("$.id").value("doc-1"))
 				.andExpect(jsonPath("$.title").value("notes.txt"))
 				.andExpect(jsonPath("$.sourceType").value("TEXT"))
-				.andExpect(jsonPath("$.content").value("Hello world"));
+				.andExpect(jsonPath("$.content").value("Hello world"))
+				.andExpect(jsonPath("$.deduplicated").value(false));
 	}
 
 	@Test
@@ -86,7 +88,8 @@ class DocumentControllerTest {
 		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
 		Document document = new Document("doc-1", "project-1", "Meeting Notes", SourceType.TEXT, "Body text",
 				"hash-1", createdAt);
-		given(documentService.ingestText(eq("project-1"), any(IngestTextRequest.class))).willReturn(document);
+		given(documentService.ingestText(eq("project-1"), any(IngestTextRequest.class)))
+				.willReturn(new IngestResult(document, false));
 
 		mockMvc.perform(post("/api/projects/{projectId}/documents/text", "project-1")
 				.contentType(MediaType.APPLICATION_JSON).content("""
@@ -97,7 +100,28 @@ class DocumentControllerTest {
 						"""))
 				.andExpect(status().isCreated())
 				.andExpect(header().string("Location", "/api/projects/project-1/documents/doc-1"))
-				.andExpect(jsonPath("$.title").value("Meeting Notes"));
+				.andExpect(jsonPath("$.title").value("Meeting Notes"))
+				.andExpect(jsonPath("$.deduplicated").value(false));
+	}
+
+	@Test
+	void createFromTextReturnsOkWithDeduplicatedTrueOnDuplicateContent() throws Exception {
+		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
+		Document existingDocument = new Document("doc-1", "project-1", "Meeting Notes", SourceType.TEXT, "Body text",
+				"hash-1", createdAt);
+		given(documentService.ingestText(eq("project-1"), any(IngestTextRequest.class)))
+				.willReturn(new IngestResult(existingDocument, true));
+
+		mockMvc.perform(post("/api/projects/{projectId}/documents/text", "project-1")
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{
+							"title": "Meeting Notes Again",
+							"content": "Body text"
+						}
+						"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value("doc-1"))
+				.andExpect(jsonPath("$.deduplicated").value(true));
 	}
 
 	@Test

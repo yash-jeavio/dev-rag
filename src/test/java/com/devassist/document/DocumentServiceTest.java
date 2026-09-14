@@ -31,7 +31,7 @@ class DocumentServiceTest {
 	@Test
 	void ingestFileStoresPlainTextDocument() {
 		Document document = documentService.ingestFile(existingProjectId, "notes.txt",
-				"Hello world".getBytes(StandardCharsets.UTF_8));
+				"Hello world".getBytes(StandardCharsets.UTF_8)).document();
 
 		assertThat(document.id()).isNotBlank();
 		assertThat(document.projectId()).isEqualTo(existingProjectId);
@@ -43,7 +43,7 @@ class DocumentServiceTest {
 	@Test
 	void ingestFileAssignsMarkdownSourceTypeFromExtension() {
 		Document document = documentService.ingestFile(existingProjectId, "README.md",
-				"# Title".getBytes(StandardCharsets.UTF_8));
+				"# Title".getBytes(StandardCharsets.UTF_8)).document();
 
 		assertThat(document.sourceType()).isEqualTo(SourceType.MARKDOWN);
 	}
@@ -71,7 +71,7 @@ class DocumentServiceTest {
 	@Test
 	void ingestTextStoresDocumentWithTextSourceType() {
 		Document document = documentService.ingestText(existingProjectId,
-				new IngestTextRequest("Meeting Notes", "We discussed the roadmap."));
+				new IngestTextRequest("Meeting Notes", "We discussed the roadmap.")).document();
 
 		assertThat(document.title()).isEqualTo("Meeting Notes");
 		assertThat(document.sourceType()).isEqualTo(SourceType.TEXT);
@@ -95,7 +95,8 @@ class DocumentServiceTest {
 
 	@Test
 	void findByIdReturnsPreviouslyIngestedDocument() {
-		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"));
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"))
+				.document();
 
 		Document found = documentService.findById(existingProjectId, created.id());
 
@@ -110,7 +111,8 @@ class DocumentServiceTest {
 
 	@Test
 	void findByIdThrowsWhenDocumentBelongsToDifferentProject() {
-		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"));
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"))
+				.document();
 		Project otherProject = projectService
 				.create(new CreateProjectRequest("Other", null, "Java", "https://github.com/example/other"));
 
@@ -127,7 +129,7 @@ class DocumentServiceTest {
 	@Test
 	void updateFileReplacesContentAndPreservesIdAndCreatedAt() {
 		Document created = documentService.ingestFile(existingProjectId, "notes.txt",
-				"Original".getBytes(StandardCharsets.UTF_8));
+				"Original".getBytes(StandardCharsets.UTF_8)).document();
 
 		Document updated = documentService.updateFile(existingProjectId, created.id(), "revised.md",
 				"Revised".getBytes(StandardCharsets.UTF_8));
@@ -150,7 +152,7 @@ class DocumentServiceTest {
 	@Test
 	void updateFileThrowsWhenDocumentBelongsToDifferentProject() {
 		Document created = documentService.ingestFile(existingProjectId, "notes.txt",
-				"Original".getBytes(StandardCharsets.UTF_8));
+				"Original".getBytes(StandardCharsets.UTF_8)).document();
 		Project otherProject = projectService
 				.create(new CreateProjectRequest("Other", null, "Java", "https://github.com/example/other"));
 
@@ -160,7 +162,8 @@ class DocumentServiceTest {
 
 	@Test
 	void updateTextReplacesTitleAndContent() {
-		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"));
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"))
+				.document();
 
 		Document updated = documentService.updateText(existingProjectId, created.id(),
 				new IngestTextRequest("Renamed", "Updated body"));
@@ -181,7 +184,8 @@ class DocumentServiceTest {
 
 	@Test
 	void updateTextThrowsWhenDocumentBelongsToDifferentProject() {
-		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"));
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"))
+				.document();
 		Project otherProject = projectService
 				.create(new CreateProjectRequest("Other", null, "Java", "https://github.com/example/other"));
 
@@ -191,7 +195,8 @@ class DocumentServiceTest {
 
 	@Test
 	void deleteRemovesDocument() {
-		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"));
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"))
+				.document();
 
 		documentService.delete(existingProjectId, created.id());
 
@@ -207,7 +212,8 @@ class DocumentServiceTest {
 
 	@Test
 	void deleteThrowsWhenDocumentBelongsToDifferentProject() {
-		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"));
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"))
+				.document();
 		Project otherProject = projectService
 				.create(new CreateProjectRequest("Other", null, "Java", "https://github.com/example/other"));
 
@@ -217,9 +223,10 @@ class DocumentServiceTest {
 
 	@Test
 	void ingestingIdenticalContentTwiceReturnsTheSameDocument() {
-		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "same body"));
-		Document second = documentService.ingestText(existingProjectId,
-				new IngestTextRequest("notes again", "same body"));
+		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "same body"))
+				.document();
+		Document second = documentService
+				.ingestText(existingProjectId, new IngestTextRequest("notes again", "same body")).document();
 
 		assertThat(second.id()).isEqualTo(first.id());
 		assertThat(second.title()).isEqualTo("notes");
@@ -230,17 +237,39 @@ class DocumentServiceTest {
 		String otherProjectId = projectService
 				.create(new CreateProjectRequest("Other", null, "Java", "https://example.com/x")).id();
 
-		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "same body"));
-		Document second = documentService.ingestText(otherProjectId, new IngestTextRequest("notes", "same body"));
+		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "same body"))
+				.document();
+		Document second = documentService.ingestText(otherProjectId, new IngestTextRequest("notes", "same body"))
+				.document();
 
 		assertThat(second.id()).isNotEqualTo(first.id());
 	}
 
 	@Test
 	void differentContentCreatesDistinctDocuments() {
-		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("a", "body one"));
-		Document second = documentService.ingestText(existingProjectId, new IngestTextRequest("b", "body two"));
+		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("a", "body one"))
+				.document();
+		Document second = documentService.ingestText(existingProjectId, new IngestTextRequest("b", "body two"))
+				.document();
 
 		assertThat(second.id()).isNotEqualTo(first.id());
+	}
+
+	@Test
+	void ingestingNewContentReturnsResultWithDeduplicatedFalse() {
+		IngestResult result = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"));
+
+		assertThat(result.deduplicated()).isFalse();
+	}
+
+	@Test
+	void ingestingIdenticalContentReturnsResultWithDeduplicatedTrueAndSameDocumentId() {
+		IngestResult first = documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "same body"));
+
+		IngestResult second = documentService.ingestText(existingProjectId,
+				new IngestTextRequest("notes again", "same body"));
+
+		assertThat(second.deduplicated()).isTrue();
+		assertThat(second.document().id()).isEqualTo(first.document().id());
 	}
 }
