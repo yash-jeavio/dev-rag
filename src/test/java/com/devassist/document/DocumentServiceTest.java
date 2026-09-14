@@ -4,6 +4,8 @@ import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 
 import com.devassist.project.CreateProjectRequest;
 import com.devassist.project.Project;
@@ -12,17 +14,24 @@ import com.devassist.project.ProjectService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class DocumentServiceTest {
 
 	private final ProjectService projectService = new ProjectService();
 	private final DocumentTextExtractor textExtractor = new DocumentTextExtractor();
-	private final DocumentService documentService = new DocumentService(projectService, textExtractor);
+	private ApplicationEventPublisher eventPublisher;
+	private DocumentService documentService;
 
 	private String existingProjectId;
 
 	@BeforeEach
 	void createProject() {
+		eventPublisher = mock(ApplicationEventPublisher.class);
+		documentService = new DocumentService(projectService, textExtractor, eventPublisher);
 		Project project = projectService
 				.create(new CreateProjectRequest("DevAssist", null, "Java", "https://github.com/example/repo"));
 		existingProjectId = project.id();
@@ -309,5 +318,61 @@ class DocumentServiceTest {
 		assertThat(otherStillPresent.id()).isEqualTo(other.id());
 		assertThat(otherStillPresent.content()).isEqualTo("shared body");
 		assertThat(otherStillPresent.id()).isNotEqualTo(updated.id());
+	}
+
+	@Test
+	void publishesIngestedEventForNewDocument() {
+		Document document = documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "body"))
+				.document();
+
+		ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+		verify(eventPublisher).publishEvent(captor.capture());
+		assertThat(captor.getValue()).isInstanceOf(DocumentIngestedEvent.class);
+		assertThat(((DocumentIngestedEvent) captor.getValue()).document().id()).isEqualTo(document.id());
+	}
+
+	@Test
+	void publishesNoEventForDeduplicatedIngest() {
+		documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "same body"));
+		clearInvocations(eventPublisher);
+
+		documentService.ingestText(existingProjectId, new IngestTextRequest("notes again", "same body"));
+
+		verifyNoInteractions(eventPublisher);
+	}
+
+	@Test
+	void publishesUpdatedEventOnUpdateText() {
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"))
+				.document();
+		clearInvocations(eventPublisher);
+
+		Document updated = documentService.updateText(existingProjectId, created.id(),
+				new IngestTextRequest("Renamed", "Updated body"));
+
+		verify(eventPublisher).publishEvent(new DocumentUpdatedEvent(updated));
+	}
+
+	@Test
+	void publishesUpdatedEventOnUpdateFile() {
+		Document created = documentService.ingestFile(existingProjectId, "notes.txt",
+				"Original".getBytes(StandardCharsets.UTF_8)).document();
+		clearInvocations(eventPublisher);
+
+		Document updated = documentService.updateFile(existingProjectId, created.id(), "revised.md",
+				"Revised".getBytes(StandardCharsets.UTF_8));
+
+		verify(eventPublisher).publishEvent(new DocumentUpdatedEvent(updated));
+	}
+
+	@Test
+	void publishesDeletedEventOnDelete() {
+		Document document = documentService.ingestText(existingProjectId, new IngestTextRequest("notes", "body"))
+				.document();
+		clearInvocations(eventPublisher);
+
+		documentService.delete(existingProjectId, document.id());
+
+		verify(eventPublisher).publishEvent(new DocumentDeletedEvent(existingProjectId, document.id()));
 	}
 }

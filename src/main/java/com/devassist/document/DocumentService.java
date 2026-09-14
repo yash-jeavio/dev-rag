@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import com.devassist.project.ProjectService;
@@ -22,10 +23,13 @@ public class DocumentService {
 	private final Map<String, Document> documents = new ConcurrentHashMap<>();
 	private final ProjectService projectService;
 	private final DocumentTextExtractor textExtractor;
+	private final ApplicationEventPublisher eventPublisher;
 
-	public DocumentService(ProjectService projectService, DocumentTextExtractor textExtractor) {
+	public DocumentService(ProjectService projectService, DocumentTextExtractor textExtractor,
+			ApplicationEventPublisher eventPublisher) {
 		this.projectService = projectService;
 		this.textExtractor = textExtractor;
+		this.eventPublisher = eventPublisher;
 	}
 
 	public IngestResult ingestFile(String projectId, String filename, byte[] fileBytes) {
@@ -42,6 +46,7 @@ public class DocumentService {
 		Document document = new Document(UUID.randomUUID().toString(), projectId, filename, extracted.sourceType(),
 				extracted.text(), contentHash, Instant.now());
 		documents.put(document.id(), document);
+		eventPublisher.publishEvent(new DocumentIngestedEvent(document));
 		return new IngestResult(document, false);
 	}
 
@@ -58,6 +63,7 @@ public class DocumentService {
 		Document document = new Document(UUID.randomUUID().toString(), projectId, request.title(), SourceType.TEXT,
 				request.content(), contentHash, Instant.now());
 		documents.put(document.id(), document);
+		eventPublisher.publishEvent(new DocumentIngestedEvent(document));
 		return new IngestResult(document, false);
 	}
 
@@ -77,6 +83,7 @@ public class DocumentService {
 		Document updated = new Document(existing.id(), existing.projectId(), filename, extracted.sourceType(),
 				extracted.text(), sha256(extracted.text()), existing.createdAt());
 		documents.put(updated.id(), updated);
+		eventPublisher.publishEvent(new DocumentUpdatedEvent(updated));
 		return updated;
 	}
 
@@ -86,12 +93,14 @@ public class DocumentService {
 		Document updated = new Document(existing.id(), existing.projectId(), request.title(), SourceType.TEXT,
 				request.content(), sha256(request.content()), existing.createdAt());
 		documents.put(updated.id(), updated);
+		eventPublisher.publishEvent(new DocumentUpdatedEvent(updated));
 		return updated;
 	}
 
 	public void delete(String projectId, String documentId) {
 		Document existing = findById(projectId, documentId);
 		documents.remove(existing.id());
+		eventPublisher.publishEvent(new DocumentDeletedEvent(projectId, existing.id()));
 	}
 
 	private void validateFile(byte[] fileBytes) {
