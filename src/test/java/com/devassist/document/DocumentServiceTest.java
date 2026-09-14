@@ -272,4 +272,42 @@ class DocumentServiceTest {
 		assertThat(second.deduplicated()).isTrue();
 		assertThat(second.document().id()).isEqualTo(first.document().id());
 	}
+
+	@Test
+	void updateTextDoesNotDedupAgainstAnotherDocumentWithMatchingContent() {
+		Document other = documentService.ingestText(existingProjectId, new IngestTextRequest("Other", "shared body"))
+				.document();
+		Document target = documentService.ingestText(existingProjectId, new IngestTextRequest("Target", "original"))
+				.document();
+
+		Document updated = documentService.updateText(existingProjectId, target.id(),
+				new IngestTextRequest("Target", "shared body"));
+
+		assertThat(updated.id()).isEqualTo(target.id());
+		assertThat(updated.content()).isEqualTo("shared body");
+
+		Document otherStillPresent = documentService.findById(existingProjectId, other.id());
+		assertThat(otherStillPresent.id()).isEqualTo(other.id());
+		assertThat(otherStillPresent.content()).isEqualTo("shared body");
+		assertThat(otherStillPresent.id()).isNotEqualTo(updated.id());
+	}
+
+	@Test
+	void updateFileDoesNotDedupAgainstAnotherDocumentWithMatchingContent() {
+		Document other = documentService
+				.ingestFile(existingProjectId, "other.txt", "shared body".getBytes(StandardCharsets.UTF_8)).document();
+		Document target = documentService
+				.ingestFile(existingProjectId, "target.txt", "original".getBytes(StandardCharsets.UTF_8)).document();
+
+		Document updated = documentService.updateFile(existingProjectId, target.id(), "target.txt",
+				"shared body".getBytes(StandardCharsets.UTF_8));
+
+		assertThat(updated.id()).isEqualTo(target.id());
+		assertThat(updated.content()).isEqualTo("shared body");
+
+		Document otherStillPresent = documentService.findById(existingProjectId, other.id());
+		assertThat(otherStillPresent.id()).isEqualTo(other.id());
+		assertThat(otherStillPresent.content()).isEqualTo("shared body");
+		assertThat(otherStillPresent.id()).isNotEqualTo(updated.id());
+	}
 }
