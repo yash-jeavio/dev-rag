@@ -402,9 +402,14 @@ class DocumentServiceTest {
 	}
 
 	@Test
-	void listOrdersDocumentsByCreationTime() {
+	void listOrdersDocumentsByCreationTime() throws InterruptedException {
 		Document first = documentService.ingestText(existingProjectId, new IngestTextRequest("first", "body one"))
 				.document();
+		// The comparator has no tiebreaker and documents live in a ConcurrentHashMap, whose
+		// iteration order is hash-based, not insertion-based. Without a real gap here, two
+		// createdAt values landing in the same clock tick would sort arbitrarily by UUID hash
+		// instead of insertion order, making this assertion flaky. Do not remove.
+		Thread.sleep(5);
 		Document second = documentService.ingestText(existingProjectId, new IngestTextRequest("second", "body two"))
 				.document();
 
