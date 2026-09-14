@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -191,5 +192,56 @@ class ProjectControllerTest {
 		mockMvc.perform(get("/api/projects"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.length()").value(0));
+	}
+
+	@Test
+	void updateReturnsOkWithUpdatedBody() throws Exception {
+		Project updated = new Project("abc-123", "Renamed", "Updated description", "Kotlin",
+				"https://github.com/example/renamed");
+		given(projectService.update(eq("abc-123"), any(UpdateProjectRequest.class))).willReturn(updated);
+
+		mockMvc.perform(put("/api/projects/{id}", "abc-123").contentType(MediaType.APPLICATION_JSON).content("""
+				{
+					"name": "Renamed",
+					"description": "Updated description",
+					"language": "Kotlin",
+					"repositoryUrl": "https://github.com/example/renamed"
+				}
+				"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value("abc-123"))
+				.andExpect(jsonPath("$.name").value("Renamed"))
+				.andExpect(jsonPath("$.description").value("Updated description"))
+				.andExpect(jsonPath("$.language").value("Kotlin"))
+				.andExpect(jsonPath("$.repositoryUrl").value("https://github.com/example/renamed"));
+	}
+
+	@Test
+	void updateReturnsBadRequestWhenNameIsMissing() throws Exception {
+		mockMvc.perform(put("/api/projects/{id}", "abc-123").contentType(MediaType.APPLICATION_JSON).content("""
+				{
+					"language": "Java",
+					"repositoryUrl": "https://github.com/example/repo"
+				}
+				"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.status").value(400))
+				.andExpect(jsonPath("$.errors[0].field").value("name"))
+				.andExpect(jsonPath("$.errors[0].message").value("must not be blank"));
+	}
+
+	@Test
+	void updateReturnsNotFoundWhenProjectDoesNotExist() throws Exception {
+		given(projectService.update(eq("missing"), any(UpdateProjectRequest.class)))
+				.willThrow(new ProjectNotFoundException("missing"));
+
+		mockMvc.perform(put("/api/projects/{id}", "missing").contentType(MediaType.APPLICATION_JSON).content("""
+				{
+					"name": "DevAssist",
+					"language": "Java",
+					"repositoryUrl": "https://github.com/example/repo"
+				}
+				"""))
+				.andExpect(status().isNotFound());
 	}
 }

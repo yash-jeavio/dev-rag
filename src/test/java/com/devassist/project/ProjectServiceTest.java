@@ -53,4 +53,27 @@ class ProjectServiceTest {
 		assertThatThrownBy(() -> projectService.findById("unknown-id"))
 				.isInstanceOf(ProjectNotFoundException.class);
 	}
+
+	@Test
+	void updateReplacesFieldsAndPreservesId() {
+		Project created = projectService
+				.create(new CreateProjectRequest("DevAssist", "A dev assistant", "Java", "https://github.com/example/repo"));
+
+		Project updated = projectService.update(created.id(),
+				new UpdateProjectRequest("Renamed", "Updated description", "Kotlin", "https://github.com/example/renamed"));
+
+		assertThat(updated.id()).isEqualTo(created.id());
+		assertThat(updated.name()).isEqualTo("Renamed");
+		assertThat(updated.description()).isEqualTo("Updated description");
+		assertThat(updated.language()).isEqualTo("Kotlin");
+		assertThat(updated.repositoryUrl()).isEqualTo("https://github.com/example/renamed");
+		assertThat(projectService.findById(created.id())).isEqualTo(updated);
+	}
+
+	@Test
+	void updateThrowsWhenProjectDoesNotExist() {
+		assertThatThrownBy(() -> projectService.update("unknown-id",
+				new UpdateProjectRequest("Renamed", null, "Kotlin", "https://github.com/example/renamed")))
+				.isInstanceOf(ProjectNotFoundException.class);
+	}
 }

@@ -31,4 +31,14 @@ public class ProjectService {
 	public List<Project> findAll() {
 		return List.copyOf(projects.values());
 	}
+
+	public Project update(String id, UpdateProjectRequest request) {
+		if (!projects.containsKey(id)) {
+			throw new ProjectNotFoundException(id);
+		}
+		Project project = new Project(id, request.name(), request.description(), request.language(),
+				request.repositoryUrl());
+		projects.put(id, project);
+		return project;
+	}
 }
