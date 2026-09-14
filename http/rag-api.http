@@ -2,23 +2,32 @@
 ###
 ### Prerequisites:
 ###   - Ollama running locally with `nomic-embed-text` pulled (http://localhost:11434)
-###   - GEMINI_API_KEY exported before starting the app (required for EVERY request below,
-###     including the "unanswerable question" one — see note before that block)
+###   - GEMINI_API_KEY exported before starting the app IF you intend to exercise a request
+###     that actually reaches the model (the "answerable question" and "summarise" blocks
+###     below) — see the note before each for why the others don't need it
 ###   - App started with `./mvnw spring-boot:run` (defaults to port 8080; adjust the
 ###     @baseUrl below if you run on a different port)
 ###
-### Verification status as of 2026-09-14 (no GEMINI_API_KEY available in that run):
-###   - Project creation, ingestion, deduplication, index-status, listing, 404s: VERIFIED
-###     against real Ollama embeddings on port 8089.
-###   - Query and summarize blocks below: NOT VERIFIED. The application's chat model bean
-###     (spring.ai.model.chat=google-genai) is eagerly constructed as part of the
-###     constructor-injected dependency graph for RagQueryController/SummarizationController,
-###     and construction fails immediately if GEMINI_API_KEY is absent/invalid — before any
-###     retrieval logic runs, before the model is ever called, and regardless of which
-###     question is asked. This means neither the ANSWERED path nor the INSUFFICIENT_CONTEXT
-###     path could be exercised end-to-end in that run; both returned HTTP 500. See
-###     task-13-report.md for full detail. Once a real key is set, re-run every block below
-###     top to bottom.
+### Updated 2026-09-14 (post final-review fix wave): the notes below previously claimed the
+### Gemini key was required for every request, that the chat bean was built eagerly at
+### startup, and that the unanswerable-question case returned HTTP 500. All three are now
+### false, corrected in place below:
+###   - GeminiLazyChatModelConfiguration (see src/main/java/com/devassist/rag) marks the
+###     Gemini ChatModel/Client bean definitions lazy, so the app starts fine and every
+###     non-model endpoint (ingest, dedup, index-status, list, 404s) works with no key set
+###     at all. The bean — and the key validation — is only constructed on the first request
+###     that actually calls GenerationService/SummaryGenerator.
+###   - The "unanswerable question" block never reaches the model (BR-08: empty retrieval
+###     short-circuits before generation) and correctly returns HTTP 200 with
+###     status=INSUFFICIENT_CONTEXT, key or no key.
+###
+### BR-11 recovery path: if index-status ever reports FAILED for a document (e.g. Ollama was
+### down during ingest), the fix is to PUT the document again — DocumentService.updateFile /
+### updateText publish DocumentUpdatedEvent unconditionally regardless of the document's
+### current index status, which makes DocumentIndexer delete any (partial) prior chunks and
+### attempt a fresh index. There is no separate /reindex endpoint; re-submitting the same
+### content via PUT is the supported recovery mechanism. See
+### DocumentIndexerTest.updatingADocumentAfterAFailedIndexAttemptRecoversToIndexedOnSuccess.
 
 @baseUrl = http://localhost:8080
 
@@ -63,8 +72,8 @@ GET {{baseUrl}}/api/projects/{{projectId}}/documents/{{documentId}}/index-status
 %}
 
 ### Ask an answerable question
-### NOT VERIFIED without GEMINI_API_KEY - see header note. Requires a real key to reach
-### the retrieval/generation logic at all.
+### Requires a real GEMINI_API_KEY: retrieval finds chunks here, so this path does reach
+### GenerationService and constructs the (lazy) Gemini chat bean on this call.
 POST {{baseUrl}}/api/projects/{{projectId}}/query
 Content-Type: application/json
 
@@ -76,20 +85,21 @@ Content-Type: application/json
 %}
 
 ### Ask an unanswerable question - expect INSUFFICIENT_CONTEXT, no model call (BR-08)
-### NOT VERIFIED without GEMINI_API_KEY - see header note. In this codebase the chat
-### model bean must be constructible just to reach RagQueryController at all (constructor
-### injection + eager singleton graph), so this block cannot currently be exercised
-### independently of having a working key, even though the *code* for this branch
-### (RagQueryService.answer) never calls GenerationService when retrieval is empty.
+### No GEMINI_API_KEY needed: retrieval finds nothing, RagQueryService.answer short-circuits
+### before calling GenerationService, so the (lazy) Gemini bean is never constructed for
+### this request. Returns HTTP 200 (not 500) with status=INSUFFICIENT_CONTEXT.
 POST {{baseUrl}}/api/projects/{{projectId}}/query
 Content-Type: application/json
 
 {"question":"What is the capital of France?"}
 
-> {% client.test("Insufficient", () => response.body.status === "INSUFFICIENT_CONTEXT"); %}
+> {%
+    client.test("OK", () => response.status === 200);
+    client.test("Insufficient", () => response.body.status === "INSUFFICIENT_CONTEXT");
+%}
 
 ### Summarise the document
-### NOT VERIFIED without GEMINI_API_KEY - see header note.
+### Requires a real GEMINI_API_KEY: SummaryGenerator always calls the model.
 POST {{baseUrl}}/api/projects/{{projectId}}/documents/{{documentId}}/summarize
 Content-Type: application/json
 

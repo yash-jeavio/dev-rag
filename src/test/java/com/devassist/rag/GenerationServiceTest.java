@@ -33,7 +33,8 @@ class GenerationServiceTest {
 		ObjectProvider<ChatClient.Builder> builderProvider = mock(ObjectProvider.class);
 		when(builderProvider.getObject()).thenReturn(ChatClient.builder(chatModel));
 
-		GenerationService service = new GenerationService(builderProvider);
+		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.1, 300, 200000);
+		GenerationService service = new GenerationService(builderProvider, properties);
 		String answer = service.generate("[1] refund text", "refund window?");
 
 		assertThat(answer).isEqualTo("Within 30 days. [1]");
@@ -45,5 +46,36 @@ class GenerationServiceTest {
 		assertThat(promptText).contains("ONLY the provided context");
 		assertThat(promptText).contains("[1] refund text");
 		assertThat(promptText).contains("refund window?");
+	}
+
+	// Guards against the two literals (here and in RagQueryService) drifting
+	// apart again now that a shared constant exists.
+	@Test
+	void systemPromptEmbedsTheSharedRefusalConstant() {
+		assertThat(GenerationService.SYSTEM_PROMPT).contains(RagQueryService.NO_CONTEXT_ANSWER);
+	}
+
+	// Fix 1: devassist.rag.temperature was configured and bound but never
+	// actually passed to the ChatClient, so generation silently ran at the
+	// provider's default (~1.0) instead of the low, factual-grounding value
+	// BR-09 calls for. This asserts the configured value reaches the actual
+	// Prompt sent to the model, not just that the property binds.
+	@Test
+	void appliesTheConfiguredTemperatureToTheChatClient() {
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getOptions()).thenReturn(ChatOptions.builder().build());
+		ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+		when(chatModel.call(promptCaptor.capture()))
+				.thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("answer")))));
+
+		@SuppressWarnings("unchecked")
+		ObjectProvider<ChatClient.Builder> builderProvider = mock(ObjectProvider.class);
+		when(builderProvider.getObject()).thenReturn(ChatClient.builder(chatModel));
+
+		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.42, 300, 200000);
+		GenerationService service = new GenerationService(builderProvider, properties);
+		service.generate("context", "question");
+
+		assertThat(promptCaptor.getValue().getOptions().getTemperature()).isEqualTo(0.42);
 	}
 }

@@ -1,6 +1,7 @@
 package com.devassist.rag;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
@@ -18,16 +19,23 @@ public class SummaryGenerator {
 	// (and validating GEMINI_API_KEY) to the first real summarize() call
 	// instead of forcing it at application startup.
 	private final ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
+	private final RagProperties properties;
 
-	public SummaryGenerator(ObjectProvider<ChatClient.Builder> chatClientBuilderProvider) {
+	public SummaryGenerator(ObjectProvider<ChatClient.Builder> chatClientBuilderProvider, RagProperties properties) {
 		this.chatClientBuilderProvider = chatClientBuilderProvider;
+		this.properties = properties;
 	}
 
 	public String summarize(String text, String instruction) {
 		String steer = (instruction == null || instruction.isBlank())
 				? "Summarise the document."
 				: instruction;
-		ChatClient chatClient = chatClientBuilderProvider.getObject().defaultSystem(SYSTEM_PROMPT).build();
+		// BR-09: low temperature for factual grounding rather than the
+		// provider's default (~1.0).
+		ChatClient chatClient = chatClientBuilderProvider.getObject()
+				.defaultSystem(SYSTEM_PROMPT)
+				.defaultOptions(ChatOptions.builder().temperature(properties.temperature()))
+				.build();
 		return chatClient.prompt()
 				.user("%s\n\nDocument:\n%s".formatted(steer, text))
 				.call()

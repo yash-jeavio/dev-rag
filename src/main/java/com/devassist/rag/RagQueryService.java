@@ -10,7 +10,10 @@ import com.devassist.project.ProjectService;
 @Service
 public class RagQueryService {
 
-	private static final String NO_CONTEXT_ANSWER = "I don't have enough information to answer this.";
+	// BR-09: fixed wording, exposed for GenerationService's system prompt to
+	// interpolate so the two call sites can never drift apart (see
+	// GenerationServiceTest.systemPromptEmbedsTheSharedRefusalConstant).
+	public static final String NO_CONTEXT_ANSWER = "I don't have enough information to answer this.";
 
 	private final ProjectService projectService;
 	private final RetrievalService retrievalService;

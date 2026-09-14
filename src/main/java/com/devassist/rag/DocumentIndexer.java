@@ -51,7 +51,7 @@ public class DocumentIndexer {
 		// success with nothing but logs to reveal the mix-up.
 		Document document = event.document();
 		try {
-			deleteChunks(document.id());
+			deleteChunks(document.id(), document.projectId());
 		}
 		catch (RuntimeException ex) {
 			log.warn("Failed to delete prior chunks for document {}; aborting re-index", document.id(), ex);
@@ -71,7 +71,7 @@ public class DocumentIndexer {
 		// it would ever read a status for a deleted document, so no new
 		// status value here would be observable through the API anyway.
 		try {
-			deleteChunks(event.documentId());
+			deleteChunks(event.documentId(), event.projectId());
 		}
 		catch (RuntimeException ex) {
 			log.error("Failed to delete chunks for document {}; orphan chunks remain in the vector store,"
@@ -109,7 +109,13 @@ public class DocumentIndexer {
 		}
 	}
 
-	private void deleteChunks(String documentId) {
-		vectorStore.delete(new FilterExpressionBuilder().eq("documentId", documentId).build());
+	// BR-06: filtering on documentId alone happened to be safe only because
+	// document ids are random UUIDs; scoping the delete to projectId as well
+	// matches every other vector-store operation and keeps this one from being
+	// the sole exception if that assumption ever changes.
+	private void deleteChunks(String documentId, String projectId) {
+		FilterExpressionBuilder builder = new FilterExpressionBuilder();
+		vectorStore.delete(
+				builder.and(builder.eq("documentId", documentId), builder.eq("projectId", projectId)).build());
 	}
 }

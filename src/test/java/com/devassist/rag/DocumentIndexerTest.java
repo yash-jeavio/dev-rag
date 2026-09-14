@@ -9,6 +9,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
+import org.springframework.ai.vectorstore.filter.Filter.ExpressionType;
+import org.springframework.ai.vectorstore.filter.Filter.Key;
+import org.springframework.ai.vectorstore.filter.Filter.Value;
 
 import com.devassist.document.Document;
 import com.devassist.document.DocumentDeletedEvent;
@@ -18,6 +21,7 @@ import com.devassist.document.SourceType;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -107,16 +111,50 @@ class DocumentIndexerTest {
 		// Plain verify() on both calls would pass even if add() ran first;
 		// InOrder is what actually pins delete-before-add per BR-04.
 		InOrder inOrder = inOrder(vectorStore);
-		inOrder.verify(vectorStore).delete(any(Filter.Expression.class));
+		ArgumentCaptor<Filter.Expression> filterCaptor = ArgumentCaptor.forClass(Filter.Expression.class);
+		inOrder.verify(vectorStore).delete(filterCaptor.capture());
 		inOrder.verify(vectorStore).add(any());
+		assertFiltersOnDocumentAndProject(filterCaptor.getValue(), "doc-1", "proj-1");
 	}
 
 	@Test
 	void deletesChunksOnDocumentDeletion() {
 		indexer.onDeleted(new DocumentDeletedEvent("proj-1", "doc-1"));
 
-		verify(vectorStore).delete(any(Filter.Expression.class));
+		ArgumentCaptor<Filter.Expression> filterCaptor = ArgumentCaptor.forClass(Filter.Expression.class);
+		verify(vectorStore).delete(filterCaptor.capture());
+		assertFiltersOnDocumentAndProject(filterCaptor.getValue(), "doc-1", "proj-1");
 		assertThat(statusService.get("doc-1")).isEmpty();
+	}
+
+	// BR-06: retrieval and every other vector-store operation are scoped by
+	// projectId; this pins deletion to the same rule rather than relying
+	// solely on documentId being a hard-to-collide UUID.
+	@Test
+	void deleteFilterScopesToBothDocumentAndProjectNotDocumentAlone() {
+		indexer.onDeleted(new DocumentDeletedEvent("proj-1", "doc-1"));
+
+		ArgumentCaptor<Filter.Expression> filterCaptor = ArgumentCaptor.forClass(Filter.Expression.class);
+		verify(vectorStore).delete(filterCaptor.capture());
+		assertThat(filterCaptor.getValue().type()).isEqualTo(ExpressionType.AND);
+	}
+
+	private void assertFiltersOnDocumentAndProject(Filter.Expression expression, String documentId,
+			String projectId) {
+		assertThat(expression.type()).isEqualTo(ExpressionType.AND);
+		Filter.Expression left = (Filter.Expression) expression.left();
+		Filter.Expression right = (Filter.Expression) expression.right();
+		List<Filter.Expression> operands = List.of(left, right);
+		assertThat(operands).anySatisfy(op -> {
+			assertThat(op.type()).isEqualTo(ExpressionType.EQ);
+			assertThat(((Key) op.left()).key()).isEqualTo("documentId");
+			assertThat(((Value) op.right()).value()).isEqualTo(documentId);
+		});
+		assertThat(operands).anySatisfy(op -> {
+			assertThat(op.type()).isEqualTo(ExpressionType.EQ);
+			assertThat(((Key) op.left()).key()).isEqualTo("projectId");
+			assertThat(((Value) op.right()).value()).isEqualTo(projectId);
+		});
 	}
 
 	@Test
@@ -141,5 +179,28 @@ class DocumentIndexerTest {
 
 		assertThat(statusService.get("doc-1")).hasValueSatisfying(status ->
 				assertThat(status.state()).isEqualTo(IndexStatus.State.INDEXED));
+	}
+
+	// BR-11: "re-indexable later" is only true if some real trigger recovers a
+	// FAILED document. PUT (DocumentService.updateFile/updateText) is that
+	// trigger today - it publishes DocumentUpdatedEvent unconditionally,
+	// regardless of the document's current index status - but nothing proved
+	// that a prior FAILED attempt actually gets superseded by a later success
+	// rather than, say, being left stuck. See http/rag-api.http for the
+	// user-facing documentation of this recovery path.
+	@Test
+	void updatingADocumentAfterAFailedIndexAttemptRecoversToIndexedOnSuccess() {
+		doThrow(new RuntimeException("ollama down")).doNothing().when(vectorStore).add(any());
+
+		indexer.onIngested(new DocumentIngestedEvent(document));
+		assertThat(statusService.get("doc-1")).hasValueSatisfying(status ->
+				assertThat(status.state()).isEqualTo(IndexStatus.State.FAILED));
+
+		indexer.onUpdated(new DocumentUpdatedEvent(document));
+
+		assertThat(statusService.get("doc-1")).hasValueSatisfying(status -> {
+			assertThat(status.state()).isEqualTo(IndexStatus.State.INDEXED);
+			assertThat(status.chunkCount()).isEqualTo(1);
+		});
 	}
 }
