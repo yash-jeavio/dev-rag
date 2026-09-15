@@ -1,13 +1,13 @@
 package com.devassist.eval;
 
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ResourceLoader;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.devassist.rag.ChatProviderService;
 
 @Configuration
 @EnableConfigurationProperties(EvalProperties.class)
@@ -21,8 +21,8 @@ public class EvalConfiguration {
 	// switch to a bare, uncustomized ObjectMapper (no JavaTimeModule) for all HTTP
 	// JSON serialization if the preferred-json-mapper condition ever changes.
 	@Bean
-	public JudgeService judgeService(ObjectProvider<ChatClient.Builder> chatClientBuilderProvider) {
-		return new JudgeService(chatClientBuilderProvider, new ObjectMapper());
+	public JudgeService judgeService(ChatProviderService chatProviderService) {
+		return new JudgeService(chatProviderService, new ObjectMapper());
 	}
 
 	@Bean

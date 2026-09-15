@@ -5,10 +5,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.ObjectProvider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.devassist.rag.ChatProviderService;
 import com.devassist.rag.EvaluationScore;
 import com.devassist.rag.SourceReference;
 
@@ -29,17 +29,17 @@ public class JudgeService {
 	// must be handled, not treated as exceptional.
 	private static final Pattern JSON_OBJECT = Pattern.compile("\\{.*}", Pattern.DOTALL);
 
-	private final ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
+	private final ChatProviderService chatProviderService;
 	private final ObjectMapper objectMapper;
 
-	public JudgeService(ObjectProvider<ChatClient.Builder> chatClientBuilderProvider, ObjectMapper objectMapper) {
-		this.chatClientBuilderProvider = chatClientBuilderProvider;
+	public JudgeService(ChatProviderService chatProviderService, ObjectMapper objectMapper) {
+		this.chatProviderService = chatProviderService;
 		this.objectMapper = objectMapper;
 	}
 
 	public EvaluationScore judgeAnswered(String question, String answer, List<SourceReference> sources) {
 		String context = buildContext(sources);
-		ChatClient chatClient = chatClientBuilderProvider.getObject().defaultSystem(SYSTEM_PROMPT).build();
+		ChatClient chatClient = chatProviderService.activeChatClientBuilder().defaultSystem(SYSTEM_PROMPT).build();
 		String raw = chatClient.prompt()
 				.user("Context:\n%s\n\nQuestion: %s\n\nAnswer to evaluate: %s".formatted(context, question, answer))
 				.call()

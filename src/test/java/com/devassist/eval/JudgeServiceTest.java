@@ -9,10 +9,10 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.beans.factory.ObjectProvider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.devassist.rag.ChatProviderService;
 import com.devassist.rag.EvaluationScore;
 import com.devassist.rag.SourceReference;
 
@@ -28,11 +28,10 @@ class JudgeServiceTest {
 		when(chatModel.call(org.mockito.ArgumentMatchers.any(org.springframework.ai.chat.prompt.Prompt.class)))
 				.thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage(rawModelOutput)))));
 
-		@SuppressWarnings("unchecked")
-		ObjectProvider<ChatClient.Builder> builderProvider = mock(ObjectProvider.class);
-		when(builderProvider.getObject()).thenReturn(ChatClient.builder(chatModel));
+		ChatProviderService chatProviderService = mock(ChatProviderService.class);
+		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
 
-		return new JudgeService(builderProvider, new ObjectMapper());
+		return new JudgeService(chatProviderService, new ObjectMapper());
 	}
 
 	private final List<SourceReference> sources = List.of(
@@ -101,10 +100,9 @@ class JudgeServiceTest {
 		when(chatModel.call(promptCaptor.capture())).thenReturn(
 				new ChatResponse(List.of(new Generation(new AssistantMessage(
 						"{\"faithfulness\": 5, \"completeness\": 5, \"reasoning\": \"ok\"}")))));
-		@SuppressWarnings("unchecked")
-		ObjectProvider<ChatClient.Builder> builderProvider = mock(ObjectProvider.class);
-		when(builderProvider.getObject()).thenReturn(ChatClient.builder(chatModel));
-		JudgeService service = new JudgeService(builderProvider, new ObjectMapper());
+		ChatProviderService chatProviderService = mock(ChatProviderService.class);
+		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
+		JudgeService service = new JudgeService(chatProviderService, new ObjectMapper());
 
 		service.judgeAnswered("What is the return window?", "30 days. [1]", sources);
 
