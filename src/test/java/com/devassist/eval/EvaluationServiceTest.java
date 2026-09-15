@@ -100,15 +100,25 @@ class EvaluationServiceTest {
 				RagAnswerResponse.Status.INSUFFICIENT_CONTEXT, List.of(), 50, null);
 		when(ragQueryService.answer("eval-proj", "unanswerable q")).thenReturn(declined);
 
-		List<EvalResultEntry> results = service.runEvaluation().results();
+		EvalReportResponse report = service.runEvaluation();
 
 		verify(judgeService, never()).judgeAnswered(anyString(), anyString(), any());
-		EvaluationScore score = results.get(0).response().evaluation();
+		EvalResultEntry entry = report.results().get(0);
+		EvaluationScore score = entry.response().evaluation();
 		assertThat(score.method()).isEqualTo(EvaluationScore.Method.PROGRAMMATIC);
 		assertThat(score.correctlyDeclined()).isTrue();
-		assertThat(results.get(0).outcomeMatchedExpectation()).isTrue();
+		assertThat(entry.outcomeMatchedExpectation()).isTrue();
+		// Fix 1a: a correctly-scored PROGRAMMATIC entry must not be miscounted
+		// as an unscorable judge failure, and it is not a mismatched outcome.
+		assertThat(report.summary().failedQuestions()).isEqualTo(0);
+		assertThat(report.summary().mismatchedOutcomes()).isEqualTo(0);
 	}
 
+	// Fix 1b: BR-08's "outcome didn't match expectation" signal must be a
+	// real, separately-counted pass/fail term - not just per-entry decoration
+	// that a caller could ignore. An answerable question that the system
+	// wrongly declines is scored PROGRAMMATIC (never reaches the judge, so
+	// it can't be "unscorable"), yet it must still fail the run.
 	@Test
 	void flagsAMismatchWhenAnAnswerableQuestionIsWronglyDeclined() {
 		when(dataset.questions()).thenReturn(List.of(new EvalQuestion("q1", true)));
@@ -116,10 +126,14 @@ class EvaluationServiceTest {
 				RagAnswerResponse.Status.INSUFFICIENT_CONTEXT, List.of(), 50, null);
 		when(ragQueryService.answer("eval-proj", "q1")).thenReturn(declined);
 
-		EvalResultEntry entry = service.runEvaluation().results().get(0);
+		EvalReportResponse report = service.runEvaluation();
+		EvalResultEntry entry = report.results().get(0);
 
 		assertThat(entry.response().evaluation().correctlyDeclined()).isFalse();
 		assertThat(entry.outcomeMatchedExpectation()).isFalse();
+		assertThat(report.summary().failedQuestions()).isEqualTo(0);
+		assertThat(report.summary().mismatchedOutcomes()).isEqualTo(1);
+		assertThat(report.summary().passed()).isFalse();
 	}
 
 	@Test

@@ -6,14 +6,12 @@ import java.util.regex.Pattern;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.devassist.rag.EvaluationScore;
 import com.devassist.rag.SourceReference;
 
-@Service
 public class JudgeService {
 
 	private static final String SYSTEM_PROMPT = """
@@ -72,6 +70,9 @@ public class JudgeService {
 			if (parsed.faithfulness() == null || parsed.completeness() == null) {
 				return unscorable("Judge response missing faithfulness or completeness: " + raw);
 			}
+			if (!isInRange(parsed.faithfulness()) || !isInRange(parsed.completeness())) {
+				return unscorable("Judge response score out of the 1-5 range: " + raw);
+			}
 			return new EvaluationScore(parsed.faithfulness(), parsed.completeness(), null,
 					parsed.reasoning() != null ? parsed.reasoning() : "(no reasoning given)",
 					EvaluationScore.Method.JUDGED);
@@ -79,6 +80,10 @@ public class JudgeService {
 		catch (Exception ex) {
 			return unscorable("Could not parse judge response: " + ex.getMessage());
 		}
+	}
+
+	private boolean isInRange(int score) {
+		return score >= 1 && score <= 5;
 	}
 
 	private EvaluationScore unscorable(String reasoning) {

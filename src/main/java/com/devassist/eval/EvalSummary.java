@@ -8,6 +8,7 @@ public record EvalSummary(
 		Double averageCompleteness,
 		Double correctlyDeclinedRate,
 		int failedQuestions,
+		int mismatchedOutcomes,
 		boolean passed
 ) {
 }

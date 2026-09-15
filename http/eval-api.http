@@ -6,9 +6,13 @@
 ###   - GEMINI_API_KEY exported before starting the app IF you intend to exercise a request
 ###     that reaches the model — both the query-answering step inside
 ###     RagQueryService.answer(...) AND the LLM-as-judge scoring in JudgeService need it.
-###     Without it, POST /api/eval/run still runs (seeding does not require Gemini), but
-###     each question's underlying RagQueryService.answer(...) call fails when it tries to
-###     build the lazy Gemini chat bean, which RagExceptionHandler maps to a 503.
+###     Without it, POST /api/eval/run still returns 200: RagExceptionHandler does NOT cover
+###     this endpoint (EvalController is not in its assignableTypes list). Instead, each
+###     question's underlying RagQueryService.answer(...) failure (e.g. a BeanCreationException
+###     from the missing Gemini key) is caught per-question inside
+###     EvaluationService.evaluateOne()'s own try/catch and recorded as that entry's
+###     failureReason, and the run continues — you get a full 200 report where some or all
+###     entries show a failure reason, not a 503.
 ###   - App started with `./mvnw spring-boot:run` (defaults to port 8080; adjust the
 ###     @baseUrl below if you run on a different port). No manual setup is required beyond
 ###     starting the app: EvalCorpusSeeder seeds the "RAG Evaluation Corpus" project and its
@@ -25,7 +29,11 @@ POST {{baseUrl}}/api/eval/run
     client.test("Has a pass/fail verdict", () => typeof response.body.summary.passed === "boolean");
 %}
 
-### Run it again - proves startup seeding is idempotent, not appended
+### Run it again - proves the ENDPOINT itself is repeatable and doesn't append
+### duplicate results on repeated calls. This does NOT prove startup seeding is
+### idempotent: EvalCorpusSeeder only runs once, at application boot, so this
+### request never re-triggers it. Proving seeding idempotency would require
+### restarting the app and re-checking that no duplicate documents were created.
 POST {{baseUrl}}/api/eval/run
 
 > {%

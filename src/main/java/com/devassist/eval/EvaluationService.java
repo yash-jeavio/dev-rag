@@ -117,6 +117,8 @@ public class EvaluationService {
 				.toList();
 		List<EvalResultEntry> judged = answerableWithResponse.stream()
 				.filter(e -> e.response().evaluation().method() == EvaluationScore.Method.JUDGED)
+				.filter(e -> e.response().evaluation().faithfulness() != null
+						&& e.response().evaluation().completeness() != null)
 				.toList();
 		List<EvalResultEntry> unanswerableWithResponse = withResponse.stream()
 				.filter(entry -> !entry.expectedAnswerable())
@@ -126,8 +128,24 @@ public class EvaluationService {
 		// at all) AND a judge-level failure (response exists, but its
 		// evaluation is UNSCORABLE) both count as failed - an inconclusive
 		// run must not look clean just because RagQueryService itself succeeded.
-		long unscorableCount = answerableWithResponse.size() - judged.size();
+		// Counted over ALL entries with a response (not just answerableWithResponse)
+		// so an UNSCORABLE result on an unanswerable-expected question is also
+		// counted, and a PROGRAMMATIC-scored answerable question (wrongly
+		// declined, so it never reached the judge) is correctly NOT counted here
+		// - that case is a mismatched outcome, tracked separately below.
+		long unscorableCount = withResponse.stream()
+				.filter(e -> e.response().evaluation().method() == EvaluationScore.Method.UNSCORABLE)
+				.count();
 		int failed = (entries.size() - withResponse.size()) + (int) unscorableCount;
+
+		// BR-08: a question that got a real response but whose outcome didn't
+		// match the dataset's expectation (wrongly declined, or wrongly
+		// answered) is a distinct failure signal from an unscorable judge
+		// call. Only entries WITH a response are counted here - a pure
+		// query-level failure is already counted in `failed` above, and its
+		// outcomeMatchedExpectation is hardcoded false in the catch block, so
+		// counting it again here would double-count the same problem.
+		long mismatchedCount = withResponse.stream().filter(e -> !e.outcomeMatchedExpectation()).count();
 
 		// BR-07: faithfulness/completeness only over ANSWERED+JUDGED results.
 		OptionalDouble avgFaithfulness = judged.stream()
@@ -144,6 +162,7 @@ public class EvaluationService {
 		// BR-08: an inconclusive run (any failure) is not a passing one,
 		// regardless of how good the scores that DID complete look.
 		boolean passed = failed == 0
+				&& mismatchedCount == 0
 				&& avgFaithfulness.orElse(0) >= properties.minFaithfulness()
 				&& avgCompleteness.orElse(0) >= properties.minCompleteness()
 				&& correctlyDeclinedRate.orElse(0) >= properties.minCorrectlyDeclinedRate();
@@ -151,6 +170,7 @@ public class EvaluationService {
 		return new EvalSummary(entries.size(), answerableCount, unanswerableCount,
 				avgFaithfulness.isPresent() ? avgFaithfulness.getAsDouble() : null,
 				avgCompleteness.isPresent() ? avgCompleteness.getAsDouble() : null,
-				correctlyDeclinedRate.isPresent() ? correctlyDeclinedRate.getAsDouble() : null, failed, passed);
+				correctlyDeclinedRate.isPresent() ? correctlyDeclinedRate.getAsDouble() : null, failed,
+				(int) mismatchedCount, passed);
 	}
 }

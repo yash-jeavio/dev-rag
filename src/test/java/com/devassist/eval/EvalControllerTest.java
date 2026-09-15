@@ -30,7 +30,7 @@ class EvalControllerTest {
 		RagAnswerResponse response = new RagAnswerResponse("q1", "30 days. [1]", RagAnswerResponse.Status.ANSWERED,
 				List.of(), 100, new EvaluationScore(5, 5, null, "ok", EvaluationScore.Method.JUDGED));
 		EvalResultEntry entry = new EvalResultEntry("q1", true, response, true, null);
-		EvalSummary summary = new EvalSummary(1, 1, 0, 5.0, 5.0, null, 0, true);
+		EvalSummary summary = new EvalSummary(1, 1, 0, 5.0, 5.0, null, 0, 0, true);
 		when(evaluationService.runEvaluation()).thenReturn(new EvalReportResponse(List.of(entry), summary));
 
 		mockMvc.perform(post("/api/eval/run"))

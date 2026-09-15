@@ -83,6 +83,16 @@ class JudgeServiceTest {
 	}
 
 	@Test
+	void treatsAnOutOfRangeScoreAsUnscorable() {
+		JudgeService service = serviceReturning(
+				"{\"faithfulness\": 10, \"completeness\": 3, \"reasoning\": \"Hallucinated scale.\"}");
+
+		EvaluationScore score = service.judgeAnswered("q", "answer", sources);
+
+		assertThat(score.method()).isEqualTo(EvaluationScore.Method.UNSCORABLE);
+	}
+
+	@Test
 	void sendsTheQuestionAnswerAndSourceExcerptsInThePrompt() {
 		ChatModel chatModel = mock(ChatModel.class);
 		when(chatModel.getOptions()).thenReturn(ChatOptions.builder().build());
