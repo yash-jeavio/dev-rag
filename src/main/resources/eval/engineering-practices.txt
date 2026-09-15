@@ -1,0 +1,1 @@
+All pull requests require at least two approvals before merging to the main branch. The team deploys to production every weekday afternoon using an automated pipeline. New backend services must be written in Java using the Spring Boot framework. Code coverage for new modules must be at least 80 percent.
