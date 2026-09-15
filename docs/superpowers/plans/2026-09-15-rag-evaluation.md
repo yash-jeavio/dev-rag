@@ -247,110 +247,20 @@ Expected: PASS.
 
 - [ ] **Step 6: Write the failing exception handler test**
 
-```java
-package com.devassist.eval;
-
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.http.MediaType;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
-
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-@WebMvcTest(EvalController.class)
-class EvalExceptionHandlerTest {
-
-	@Autowired
-	private MockMvc mockMvc;
-
-	@MockitoBean
-	private EvaluationService evaluationService;
-
-	@Test
-	void returnsServiceUnavailableWhenCorpusIsNotReady() throws Exception {
-		when(evaluationService.runEvaluation()).thenThrow(new EvalCorpusNotReadyException());
-
-		mockMvc.perform(post("/api/eval/run").contentType(MediaType.APPLICATION_JSON))
-				.andExpect(status().isServiceUnavailable())
-				.andExpect(jsonPath("$.status").value(503))
-				.andExpect(jsonPath("$.message").value(
-						"Evaluation corpus not ready — is Ollama running? No documents have been indexed into the eval project yet."));
-	}
-}
-```
-
-This test references `EvalController` and `EvaluationService`, which do not
-exist until Tasks 6-7. It is written now (failing to compile) because the
-exception type and its handler are this task's concern; **do not implement
-`EvalController`/`EvaluationService` in this task** — leave this test
-failing to compile and move on. Task 7 will make it compile and pass; note
-its existence in Task 7's dispatch.
-
-Actually — to keep this task's own test cycle real and independently
-verifiable (per the plan's own rule that no task ships red), write the
-exception handler test against a **minimal throwaway controller** defined
-in the test file itself instead, so this task is fully self-contained:
+A plain unit test on the handler object — no `@WebMvcTest`, no Spring
+context, no dependency on `EvalController`'s real implementation (which
+does not exist until Task 7; only its compile-time class token is needed
+by `assignableTypes` in Step 8, and that placeholder is created there
+too). This proves exactly what this task owns: the mapping from exception
+to response body.
 
 ```java
 package com.devassist.eval;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-@WebMvcTest(EvalExceptionHandlerTest.ThrowingController.class)
-class EvalExceptionHandlerTest {
-
-	@Autowired
-	private MockMvc mockMvc;
-
-	@RestController
-	static class ThrowingController {
-		@GetMapping("/test-eval-corpus-not-ready")
-		void throwIt() {
-			throw new EvalCorpusNotReadyException();
-		}
-	}
-
-	@Test
-	void returnsServiceUnavailableWithTheFixedMessage() throws Exception {
-		mockMvc.perform(get("/test-eval-corpus-not-ready"))
-				.andExpect(status().isServiceUnavailable())
-				.andExpect(jsonPath("$.status").value(503))
-				.andExpect(jsonPath("$.message").value(
-						"Evaluation corpus not ready — is Ollama running? No documents have been indexed into the eval project yet."));
-	}
-}
-```
-
-For this to exercise `EvalExceptionHandler`, its `@RestControllerAdvice`
-must be scoped broadly enough to catch a test-local nested controller —
-use `assignableTypes = EvalController.class` in the real production
-annotation (Step 8) exactly as specified, but note this specific test
-proves the *handler method's* behaviour in isolation via a plain
-`@ExceptionHandler`-per-advice unit test instead of relying on
-`assignableTypes` matching the throwaway class. Write the assertion this
-way instead — directly against the handler, no Spring context needed:
-
-```java
-package com.devassist.eval;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
-
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -368,11 +278,6 @@ class EvalExceptionHandlerTest {
 	}
 }
 ```
-
-Use this final version — a plain unit test on the handler object, no
-`@WebMvcTest`, no throwaway controller. It is simpler, needs no Spring
-context, and proves exactly what this task owns: the mapping from
-exception to response body.
 
 - [ ] **Step 7: Run the test to verify it fails**
 
