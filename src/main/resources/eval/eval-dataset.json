@@ -1,0 +1,10 @@
+[
+  { "question": "What is the return window for physical products?", "answerable": true },
+  { "question": "How many business days does a refund take to process?", "answerable": true },
+  { "question": "What is the warranty period on physical products?", "answerable": true },
+  { "question": "How many approvals does a pull request need before merging?", "answerable": true },
+  { "question": "What framework must new backend services use?", "answerable": true },
+  { "question": "What is the minimum code coverage required for new modules?", "answerable": true },
+  { "question": "How many remote work days per week does the company allow?", "answerable": false },
+  { "question": "Which cloud provider hosts the production database?", "answerable": false }
+]
