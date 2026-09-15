@@ -55,8 +55,8 @@ package `GenerationService`, `RagExceptionHandler`, and
 | Component | Responsibility |
 |---|---|
 | `ChatProvider` | `enum { GEMINI, OPENAI }` |
-| `OpenAiChatConfiguration` | Hand-builds the `OpenAiChatModel` bean from `OpenAiConnectionProperties`/`OpenAiChatProperties`, mirroring `GoogleGenAiChatAutoConfiguration.googleGenAiClient(...)`'s fail-fast-with-a-clear-message behavior when the key is missing — written by us, not Spring AI's own autoconfiguration class (§2) |
-| `GeminiLazyChatModelConfiguration` (modified) | Its existing `BeanFactoryPostProcessor` is extended to *also* mark the new `OpenAiChatModel` bean definition lazy, alongside the Gemini beans it already handles. One shared lazy-bean mechanism for both providers |
+| `OpenAiChatConfiguration` | Hand-builds the `OpenAiChatModel` bean from `OpenAiCommonProperties`/`OpenAiChatProperties` (the real Spring AI 2.0.1 class names, confirmed by reading `OpenAiChatAutoConfiguration`'s source — not `OpenAiConnectionProperties`, which doesn't exist), via `OpenAiChatOptions.builder().apiKey(...).model(...).build()` then `OpenAiChatModel.builder().options(...).build()` — the builder constructs its own `OpenAIClient`/`OpenAIClientAsync` internally when none is supplied, so no manual client wiring is needed. Written by us, not Spring AI's own autoconfiguration class (§2). **Does not fail fast on a missing key** — see §4 for why this differs from Gemini |
+| `GeminiLazyChatModelConfiguration` (**unmodified**) | Confirmed by reading its source: its `BeanFactoryPostProcessor` already marks lazy *every* bean of type `org.springframework.ai.chat.model.ChatModel` (the generic Spring AI interface, not a Gemini-specific one) — only its second loop, over `com.google.genai.Client` (Gemini's raw SDK client, exposed as its own bean), is Gemini-specific. Since `OpenAiChatModel implements ChatModel` (confirmed by reading its source) and this plan's `OpenAiChatConfiguration` does not expose OpenAI's raw SDK client as a separate bean (§2 — it's built internally, not injected), the existing generic loop already covers the new provider with no changes to this file at all |
 | `ChatProviderService` | Holds the in-memory active `ChatProvider` (default `GEMINI`); constructor-injects `ObjectProvider<GoogleGenAiChatModel>` and `ObjectProvider<OpenAiChatModel>` (both lazy per above); exposes `get()`, `set(ChatProvider)`, `activeChatClientBuilder()` |
 | `ChatProviderController` | `GET`/`PUT /api/settings/chat-provider` |
 | `GenerationService` (modified) | Constructor changes from `ObjectProvider<ChatClient.Builder>` to `ChatProviderService`; the single call site changes from `.getObject()` to `.activeChatClientBuilder()`. Nothing else in this class changes |
@@ -79,12 +79,40 @@ are set — extending the exact guarantee `GeminiLazyChatModelConfiguration`
 already provides for Gemini alone today, to both providers.
 
 The first time `activeChatClientBuilder()` is called for a given provider,
-that provider's bean is actually built for the first time, and that is
-the moment its API key is validated (fail-fast, `IllegalStateException` if
-missing — matching Gemini's existing pattern exactly). Every subsequent
-call for that same provider reuses the already-built singleton; switching
-back and forth between providers never rebuilds anything that was already
-built once.
+that provider's bean is actually built for the first time. Every
+subsequent call for that same provider reuses the already-built singleton;
+switching back and forth between providers never rebuilds anything that
+was already built once.
+
+**The two providers do not fail the same way when a key is missing —
+confirmed by reading each provider's actual source, not assumed by
+analogy.** Gemini's bean-creation method (`googleGenAiClient(...)` in
+`GoogleGenAiChatAutoConfiguration`) explicitly checks for a key and throws
+`IllegalStateException("Incomplete Google GenAI configuration...")`
+immediately if one isn't present — this is a genuine fail-fast at
+bean-creation time, wrapped in `BeanCreationException` by Spring, which is
+what `RagExceptionHandler` catches today.
+
+OpenAI's setup code (`OpenAiSetup.setupSyncClient`/`setupAsyncClient`) does
+something different: if the resolved API key is an empty string (which is
+exactly what `${OPENAI_API_KEY:}` produces when the environment variable
+is unset), it does **not** throw. It silently builds a working
+`OpenAIClient` in a documented "no-auth mode" — a real client whose
+`Authorization` header is stripped before every request leaves the JVM.
+Bean creation succeeds either way. The failure moves one layer deeper: it
+only surfaces when a real chat completion request actually goes out over
+the network and OpenAI's server rejects the un-authenticated request
+(a 401), not when the bean is built.
+
+Practical consequence: switching to OpenAI with no `OPENAI_API_KEY` set
+does **not** give you an immediate, bean-creation-time 503 the way
+switching to Gemini-without-a-key does. The app boots fine either way
+(BR-01 is unaffected — nothing about "no-auth mode" requires a real
+network call at boot), but the *moment* and *shape* of the eventual error
+differ by provider. This is exactly why BR-08 treats "OpenAI has no key"
+and "OpenAI's live call fails for some other reason (quota, a bad key,
+network)" as the same verification task, not two separate ones — for
+OpenAI, both are the same failure path.
 
 ## 5. API
 
@@ -145,12 +173,13 @@ is an additive change to an existing file, not a new page or component.
   request that starts after the switch. A request already in progress
   when the switch happens completes using whichever provider was active
   when it started; there is no mid-request provider change.
-- **BR-05**: If the active provider's bean cannot be built (missing or
-  invalid API key) or a live call to it fails (quota, auth, network), the
-  failure surfaces as a clear error through the *existing*
-  `RagExceptionHandler` — no automatic fallback to the other provider is
-  attempted under any circumstance. The user must explicitly switch
-  providers themselves.
+- **BR-05**: If the active provider fails — for Gemini, that can happen at
+  bean-creation time (missing/invalid key) or call time (quota, auth,
+  network); for OpenAI, only at call time, since a missing key does not
+  prevent its bean from being built (§4) — the failure surfaces as a
+  clear error through the *existing* `RagExceptionHandler`. No automatic
+  fallback to the other provider is attempted under any circumstance. The
+  user must explicitly switch providers themselves.
 - **BR-06**: Neither `GenerationService` nor `JudgeService` (nor any other
   consumer) may reference a specific provider (`GoogleGenAiChatModel`,
   `OpenAiChatModel`, or the `ChatProvider` enum values) directly. Both
@@ -162,24 +191,38 @@ is an additive change to an existing file, not a new page or component.
 - **BR-07**: An invalid value on `PUT /api/settings/chat-provider` returns
   `400` via Spring Boot's default request-body deserialization error
   handling. No custom exception handler is added for this endpoint.
-- **BR-08** *(implementation-time verification required, not assumed)*:
-  The Spring AI exception type thrown by a live OpenAI call failure
-  (quota, auth, network) must be identified during implementation — by
-  triggering a real failure or reading the OpenAI chat model's source, the
-  same way `com.google.genai.errors.ApiException` was previously
-  identified for Gemini. If that type is not already among
-  `RagExceptionHandler`'s existing `@ExceptionHandler` list
-  (`NonTransientAiException`, `BeanCreationException`, `ApiException`), it
-  must be added. This must not be assumed to already work without
-  verification.
+- **BR-08** *(resolved by reading the actual `openai-java` SDK source,
+  the same way `com.google.genai.errors.ApiException` was previously
+  identified for Gemini — not assumed by analogy)*: every failure the
+  OpenAI SDK can produce — `UnauthorizedException` (401, missing or
+  invalid key — the failure mode §4 describes for a missing key),
+  `RateLimitException` (429, quota), `BadRequestException`,
+  `NotFoundException`, `PermissionDeniedException`,
+  `UnprocessableEntityException`, `InternalServerException` — extends the
+  abstract `com.openai.errors.OpenAIServiceException`, which itself
+  extends `com.openai.errors.OpenAIException` (a plain `RuntimeException`
+  subclass). Network-level failures (`OpenAIIoException`) extend
+  `OpenAIException` directly rather than through the service-exception
+  branch. Catching the single root type, `OpenAIException`, therefore
+  covers every one of OpenAI's own failure modes in one
+  `@ExceptionHandler` entry — mirroring exactly how `ApiException` already
+  covers every one of Google's. `RagExceptionHandler`'s existing
+  `@ExceptionHandler({ NonTransientAiException.class,
+  BeanCreationException.class, ApiException.class })` list gains
+  `OpenAIException.class` (import `com.openai.errors.OpenAIException`).
+  Whether Spring AI wraps this
+  exception in another `RuntimeException` before it reaches the
+  controller does not matter — `@ExceptionHandler` already matches
+  anywhere in the cause chain, confirmed during the RAG core work for
+  Gemini's equivalent case.
 
 ## 8. Error Conditions
 
 | Condition | Status | Handling |
 |---|---|---|
-| Active provider's API key missing when its bean is first built | 503 | `BeanCreationException` → existing `RagExceptionHandler.handleAiFailure` (no new code) |
-| Active provider's live call fails (quota/auth/network) — already-covered exception type | 503 | `NonTransientAiException`/`ApiException` → existing `RagExceptionHandler.handleAiFailure` (no new code) |
-| Active provider's live call fails — OpenAI-specific exception type not yet covered | *to be determined* | See BR-08 — add to `RagExceptionHandler` if a new type is found |
+| Gemini's key missing when its bean is first built | 503 | `BeanCreationException` → existing `RagExceptionHandler.handleAiFailure` (no new code) — unchanged, existing behavior |
+| Gemini's live call fails (quota/auth/network) | 503 | `NonTransientAiException`/`ApiException` → existing `RagExceptionHandler.handleAiFailure` (no new code) — unchanged, existing behavior |
+| OpenAI's key missing, invalid, quota exceeded, or a network error — all surface at call time, not bean-creation time (§4) | 503 | `com.openai.errors.OpenAIException` (root of every OpenAI SDK failure, BR-08) → `RagExceptionHandler.handleAiFailure` after adding it to the existing `@ExceptionHandler` list |
 | Invalid provider value in `PUT /api/settings/chat-provider` | 400 | Spring Boot's default JSON-binding error handling (BR-07) — not routed through `RagExceptionHandler` |
 
 ## 9. Configuration
@@ -197,7 +240,7 @@ per BR-03.
 ## 10. Non-Functional Requirements
 
 - **One new dependency**: `spring-ai-starter-model-openai`, added purely
-  for its `OpenAiChatModel`/`OpenAiApi`/`OpenAiConnectionProperties`/
+  for its `OpenAiChatModel`/`OpenAiChatOptions`/`OpenAiCommonProperties`/
   `OpenAiChatProperties` classes (used as a library, per §2) — justified
   under `CLAUDE.md`'s "necessary for the specific feature being
   implemented" rule, since OpenAI support is exactly what this feature
@@ -227,9 +270,12 @@ network access — same standing rule as the RAG core and the eval harness.
   provider string returns `400` (BR-07).
 - **`OpenAiChatModelStartsWithoutApiKeyTest`**: a full `@SpringBootTest`
   context load succeeds with no `OPENAI_API_KEY` set — mirrors the
-  existing `GeminiChatModelStartsWithoutApiKeyTest`. This is the single
-  most important regression test in this feature: it proves the lazy-bean
-  mechanism correctly extends to the new provider (BR-01).
+  existing `GeminiChatModelStartsWithoutApiKeyTest`. This proves the
+  lazy-bean mechanism correctly extends to the new provider (BR-01) — it
+  is purely about the bean staying unbuilt until something asks for it,
+  and is unaffected by §4's no-auth-mode finding (that only matters once
+  something actually calls `activeChatClientBuilder()` and tries to use
+  OpenAI for real, which BR-08's verification work covers separately).
 - **`GenerationServiceTest`, `JudgeServiceTest`** (existing, migrated):
   mocking setup moves from `ObjectProvider<ChatClient.Builder>` to
   `ChatProviderService`; every existing assertion these tests already make
