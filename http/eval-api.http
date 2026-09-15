@@ -1,0 +1,33 @@
+### DevAssist Eval API — end-to-end request file (Task 8)
+###
+### Prerequisites:
+###   - Ollama running locally with `nomic-embed-text` pulled (http://localhost:11434) —
+###     the eval corpus is seeded at startup using Ollama embeddings, no Gemini key needed.
+###   - GEMINI_API_KEY exported before starting the app IF you intend to exercise a request
+###     that reaches the model — both the query-answering step inside
+###     RagQueryService.answer(...) AND the LLM-as-judge scoring in JudgeService need it.
+###     Without it, POST /api/eval/run still runs (seeding does not require Gemini), but
+###     each question's underlying RagQueryService.answer(...) call fails when it tries to
+###     build the lazy Gemini chat bean, which RagExceptionHandler maps to a 503.
+###   - App started with `./mvnw spring-boot:run` (defaults to port 8080; adjust the
+###     @baseUrl below if you run on a different port). No manual setup is required beyond
+###     starting the app: EvalCorpusSeeder seeds the "RAG Evaluation Corpus" project and its
+###     two documents (engineering-practices.txt, product-policy.txt) idempotently at startup.
+
+@baseUrl = http://localhost:8080
+
+### Run the evaluation
+POST {{baseUrl}}/api/eval/run
+
+> {%
+    client.test("200 OK", () => response.status === 200);
+    client.test("8 questions", () => response.body.results.length === 8);
+    client.test("Has a pass/fail verdict", () => typeof response.body.summary.passed === "boolean");
+%}
+
+### Run it again - proves startup seeding is idempotent, not appended
+POST {{baseUrl}}/api/eval/run
+
+> {%
+    client.test("Still 8 questions, not 16", () => response.body.results.length === 8);
+%}
