@@ -7,11 +7,11 @@ public record IndexStatus(String documentId, State state, int chunkCount, String
 		FAILED
 	}
 
-	static IndexStatus indexed(String documentId, int chunkCount) {
+	public static IndexStatus indexed(String documentId, int chunkCount) {
 		return new IndexStatus(documentId, State.INDEXED, chunkCount, null);
 	}
 
-	static IndexStatus failed(String documentId, String reason) {
+	public static IndexStatus failed(String documentId, String reason) {
 		return new IndexStatus(documentId, State.FAILED, 0, reason);
 	}
 }
