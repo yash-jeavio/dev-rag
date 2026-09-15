@@ -136,6 +136,46 @@ class EvaluationServiceTest {
 		assertThat(report.summary().passed()).isFalse();
 	}
 
+	// The test above uses a single question with no judged scores at all, so
+	// avgFaithfulness/avgCompleteness default to 0.0, which already fails the
+	// >=4.0 threshold on its own - passed() would be false even if
+	// `&& mismatchedCount == 0` were deleted from the formula entirely. This
+	// test isolates the mismatchedOutcomes term: every OTHER condition in
+	// `passed` is deliberately satisfied (failed==0, avgFaithfulness==5.0,
+	// avgCompleteness==5.0, correctlyDeclinedRate==1.0), so the wrongly-declined
+	// question's mismatch is the ONLY thing that can make passed() false here.
+	@Test
+	void passedIsFalseFromMismatchAloneWhenEveryOtherConditionIsSatisfied() {
+		SourceReference source = new SourceReference("doc-1", "product-policy.txt", 0, 0.8, true, "excerpt");
+		when(dataset.questions()).thenReturn(List.of(new EvalQuestion("answerable-1", true),
+				new EvalQuestion("wrongly-declined", true), new EvalQuestion("unanswerable-1", false)));
+
+		// 1. Answerable, correctly answered, judged 5/5.
+		when(ragQueryService.answer("eval-proj", "answerable-1")).thenReturn(new RagAnswerResponse("answerable-1",
+				"ans [1]", RagAnswerResponse.Status.ANSWERED, List.of(source), 100, null));
+		when(judgeService.judgeAnswered(eq("answerable-1"), anyString(), any()))
+				.thenReturn(new EvaluationScore(5, 5, null, "great", EvaluationScore.Method.JUDGED));
+
+		// 2. Answerable, wrongly declined - the actual defect under test.
+		when(ragQueryService.answer("eval-proj", "wrongly-declined")).thenReturn(new RagAnswerResponse(
+				"wrongly-declined", RagQueryService.NO_CONTEXT_ANSWER, RagAnswerResponse.Status.INSUFFICIENT_CONTEXT,
+				List.of(), 50, null));
+
+		// 3. Unanswerable, correctly declined.
+		when(ragQueryService.answer("eval-proj", "unanswerable-1")).thenReturn(new RagAnswerResponse(
+				"unanswerable-1", RagQueryService.NO_CONTEXT_ANSWER, RagAnswerResponse.Status.INSUFFICIENT_CONTEXT,
+				List.of(), 50, null));
+
+		EvalSummary summary = service.runEvaluation().summary();
+
+		assertThat(summary.failedQuestions()).isEqualTo(0);
+		assertThat(summary.averageFaithfulness()).isEqualTo(5.0);
+		assertThat(summary.averageCompleteness()).isEqualTo(5.0);
+		assertThat(summary.correctlyDeclinedRate()).isEqualTo(1.0);
+		assertThat(summary.mismatchedOutcomes()).isEqualTo(1);
+		assertThat(summary.passed()).isFalse();
+	}
+
 	@Test
 	void oneFailingQuestionDoesNotStopTheRun() {
 		when(dataset.questions()).thenReturn(List.of(new EvalQuestion("bad", true), new EvalQuestion("good", true)));

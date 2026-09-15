@@ -12,7 +12,11 @@
 ###     from the missing Gemini key) is caught per-question inside
 ###     EvaluationService.evaluateOne()'s own try/catch and recorded as that entry's
 ###     failureReason, and the run continues — you get a full 200 report where some or all
-###     entries show a failure reason, not a 503.
+###     entries show a failure reason, not a 503. This endpoint DOES still return a 503 for
+###     a different case — EvalCorpusNotReadyException (Ollama down, or the corpus exists but
+###     nothing has finished indexing yet), which is checked once up front, before any
+###     question runs, and is mapped to 503 by EvalExceptionHandler. A missing Gemini key is
+###     unrelated to that check and never produces it.
 ###   - App started with `./mvnw spring-boot:run` (defaults to port 8080; adjust the
 ###     @baseUrl below if you run on a different port). No manual setup is required beyond
 ###     starting the app: EvalCorpusSeeder seeds the "RAG Evaluation Corpus" project and its
