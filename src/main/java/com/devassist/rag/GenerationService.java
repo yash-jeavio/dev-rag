@@ -2,7 +2,6 @@ package com.devassist.rag;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -22,25 +21,24 @@ public class GenerationService {
 			3. Cite the context blocks you used with markers like [1] or [2].
 			""".formatted(RagQueryService.NO_CONTEXT_ANSWER);
 
-	// Resolved on demand rather than injected as a plain ChatClient.Builder: a
-	// direct constructor dependency would force Spring to build the Gemini
-	// ChatModel/Client (and validate GEMINI_API_KEY) as soon as this
-	// (non-lazy) service is created, i.e. at application startup, even for
-	// requests that never call the model at all (BR-08). ObjectProvider defers
-	// that resolution to the moment a chat call is actually made. See
-	// GeminiLazyChatModelConfiguration for the other half of this fix.
-	private final ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
+	// Resolved on demand via ChatProviderService rather than a direct
+	// ChatModel/ChatClient.Builder dependency: which provider is active can
+	// change at runtime (see ChatProviderService), and querying it fresh on
+	// every call is also what keeps both providers' underlying beans lazy
+	// (BR-01, specs/chat-provider-switching.md) - a direct dependency on
+	// either concrete ChatModel would force Spring to build it at startup.
+	private final ChatProviderService chatProviderService;
 	private final RagProperties properties;
 
-	public GenerationService(ObjectProvider<ChatClient.Builder> chatClientBuilderProvider, RagProperties properties) {
-		this.chatClientBuilderProvider = chatClientBuilderProvider;
+	public GenerationService(ChatProviderService chatProviderService, RagProperties properties) {
+		this.chatProviderService = chatProviderService;
 		this.properties = properties;
 	}
 
 	public String generate(String context, String question) {
 		// BR-09: low temperature for factual grounding rather than the
 		// provider's default (~1.0).
-		ChatClient chatClient = chatClientBuilderProvider.getObject()
+		ChatClient chatClient = chatProviderService.activeChatClientBuilder()
 				.defaultSystem(SYSTEM_PROMPT)
 				.defaultOptions(ChatOptions.builder().temperature(properties.temperature()))
 				.build();

@@ -11,7 +11,6 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.beans.factory.ObjectProvider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -29,12 +28,11 @@ class GenerationServiceTest {
 		when(chatModel.call(promptCaptor.capture()))
 				.thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("Within 30 days. [1]")))));
 
-		@SuppressWarnings("unchecked")
-		ObjectProvider<ChatClient.Builder> builderProvider = mock(ObjectProvider.class);
-		when(builderProvider.getObject()).thenReturn(ChatClient.builder(chatModel));
+		ChatProviderService chatProviderService = mock(ChatProviderService.class);
+		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
 
 		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.1, 300, 200000);
-		GenerationService service = new GenerationService(builderProvider, properties);
+		GenerationService service = new GenerationService(chatProviderService, properties);
 		String answer = service.generate("[1] refund text", "refund window?");
 
 		assertThat(answer).isEqualTo("Within 30 days. [1]");
@@ -68,12 +66,11 @@ class GenerationServiceTest {
 		when(chatModel.call(promptCaptor.capture()))
 				.thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("answer")))));
 
-		@SuppressWarnings("unchecked")
-		ObjectProvider<ChatClient.Builder> builderProvider = mock(ObjectProvider.class);
-		when(builderProvider.getObject()).thenReturn(ChatClient.builder(chatModel));
+		ChatProviderService chatProviderService = mock(ChatProviderService.class);
+		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
 
 		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.42, 300, 200000);
-		GenerationService service = new GenerationService(builderProvider, properties);
+		GenerationService service = new GenerationService(chatProviderService, properties);
 		service.generate("context", "question");
 
 		assertThat(promptCaptor.getValue().getOptions().getTemperature()).isEqualTo(0.42);
