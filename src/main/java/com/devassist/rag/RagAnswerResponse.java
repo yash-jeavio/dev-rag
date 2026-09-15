@@ -8,7 +8,7 @@ public record RagAnswerResponse(
 		Status status,
 		List<SourceReference> sources,
 		long latencyMs,
-		Object evaluation
+		EvaluationScore evaluation
 ) {
 
 	public enum Status {
