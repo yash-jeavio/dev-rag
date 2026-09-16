@@ -7,6 +7,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -53,5 +55,18 @@ class ChatProviderControllerTest {
 		mockMvc.perform(put("/api/settings/chat-provider").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"provider\":\"NOT_A_REAL_PROVIDER\"}"))
 				.andExpect(status().isBadRequest());
+	}
+
+	// Fix 2: a missing/null provider must be rejected by @Valid before the
+	// controller method body runs, so chatProviderService.set(null) is never
+	// called - otherwise currentProvider gets wedged at null permanently
+	// (see ChatProviderService).
+	@Test
+	void putWithAMissingProviderReturnsBadRequestAndDoesNotMutateState() throws Exception {
+		mockMvc.perform(put("/api/settings/chat-provider").contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
+				.andExpect(status().isBadRequest());
+
+		verify(chatProviderService, never()).set(any());
 	}
 }

@@ -1,5 +1,7 @@
 package com.devassist.rag;
 
+import java.util.Objects;
+
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -11,7 +13,12 @@ import org.springframework.stereotype.Service;
 // resolving a provider-specific bean themselves - adding, removing, or
 // replacing a provider later is a change confined to this class and one
 // configuration class, never to either consumer (BR-06,
-// specs/chat-provider-switching.md).
+// specs/chat-provider-switching.md). Building ChatClient.builder(chatModel)
+// directly here bypasses Spring AI's own ChatClientBuilderConfigurer
+// (which would apply any registered ChatClientCustomizer/
+// ChatClientBuilderCustomizer beans, observation registry, or tool-calling
+// advisor) - harmless today since this app registers none of those, but
+// worth naming as a deliberate simplification rather than an oversight.
 @Service
 public class ChatProviderService {
 
@@ -39,6 +46,7 @@ public class ChatProviderService {
 	}
 
 	public void set(ChatProvider provider) {
+		Objects.requireNonNull(provider, "provider must not be null");
 		this.currentProvider = provider;
 	}
 

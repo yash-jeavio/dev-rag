@@ -2,6 +2,8 @@ package com.devassist.rag;
 
 import java.util.Map;
 
+import jakarta.validation.Valid;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,7 +24,7 @@ public class ChatProviderController {
 	}
 
 	@PutMapping("/api/settings/chat-provider")
-	public Map<String, ChatProvider> set(@RequestBody ChatProviderRequest request) {
+	public Map<String, ChatProvider> set(@Valid @RequestBody ChatProviderRequest request) {
 		chatProviderService.set(request.provider());
 		return Map.of("provider", chatProviderService.get());
 	}

@@ -119,6 +119,7 @@
 			<option value="GEMINI">Gemini</option>
 			<option value="OPENAI">OpenAI</option>
 		</select>
+		<span id="chatProviderStatus" class="error-text"></span>
 	</p>
 </header>
 
@@ -206,15 +207,32 @@
 	async function loadChatProvider() {
 		const res = await fetch('/api/settings/chat-provider');
 		const { provider } = await res.json();
-		document.getElementById('chatProviderSelect').value = provider;
+		const select = document.getElementById('chatProviderSelect');
+		select.value = provider;
+		select.dataset.current = provider;
 	}
 
 	document.getElementById('chatProviderSelect').addEventListener('change', async (event) => {
-		await fetch('/api/settings/chat-provider', {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ provider: event.target.value })
-		});
+		const select = event.target;
+		const previousValue = select.dataset.current || select.value;
+		const status = document.getElementById('chatProviderStatus');
+		status.textContent = '';
+		try {
+			const res = await fetch('/api/settings/chat-provider', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ provider: select.value })
+			});
+			if (!res.ok) {
+				select.value = previousValue;
+				status.textContent = 'Failed to switch provider.';
+				return;
+			}
+			select.dataset.current = select.value;
+		} catch (e) {
+			select.value = previousValue;
+			status.textContent = 'Failed to switch provider.';
+		}
 	});
 
 	// --- Tabs ---
@@ -315,7 +333,7 @@
 
 	async function summarize(documentId) {
 		const box = document.getElementById('answerBox');
-		box.innerHTML = '<p class="muted"><span class="spinner"></span>Summarizing (calls Gemini)…</p>';
+		box.innerHTML = '<p class="muted"><span class="spinner"></span>Summarizing…</p>';
 		try {
 			const res = await fetch(`/api/projects/${projectId}/documents/${documentId}/summarize`, {
 				method: 'POST',

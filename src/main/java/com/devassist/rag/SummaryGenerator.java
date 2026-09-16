@@ -2,7 +2,6 @@ package com.devassist.rag;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -14,15 +13,17 @@ public class SummaryGenerator {
 			If the text appears truncated, summarise what is present without speculating about the rest.
 			""";
 
-	// See GenerationService for why this is an ObjectProvider rather than a
-	// plain ChatClient.Builder: it defers building the Gemini ChatModel/Client
-	// (and validating GEMINI_API_KEY) to the first real summarize() call
-	// instead of forcing it at application startup.
-	private final ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
+	// Resolved on demand via ChatProviderService rather than a direct
+	// ChatModel/ChatClient.Builder dependency: which provider is active can
+	// change at runtime (see ChatProviderService), and querying it fresh on
+	// every call is also what keeps both providers' underlying beans lazy -
+	// a direct dependency on either concrete ChatModel would force Spring to
+	// build it at startup.
+	private final ChatProviderService chatProviderService;
 	private final RagProperties properties;
 
-	public SummaryGenerator(ObjectProvider<ChatClient.Builder> chatClientBuilderProvider, RagProperties properties) {
-		this.chatClientBuilderProvider = chatClientBuilderProvider;
+	public SummaryGenerator(ChatProviderService chatProviderService, RagProperties properties) {
+		this.chatProviderService = chatProviderService;
 		this.properties = properties;
 	}
 
@@ -32,7 +33,7 @@ public class SummaryGenerator {
 				: instruction;
 		// BR-09: low temperature for factual grounding rather than the
 		// provider's default (~1.0).
-		ChatClient chatClient = chatClientBuilderProvider.getObject()
+		ChatClient chatClient = chatProviderService.activeChatClientBuilder()
 				.defaultSystem(SYSTEM_PROMPT)
 				.defaultOptions(ChatOptions.builder().temperature(properties.temperature()))
 				.build();

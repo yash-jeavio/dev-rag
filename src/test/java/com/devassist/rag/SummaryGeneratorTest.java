@@ -11,7 +11,6 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.beans.factory.ObjectProvider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -27,12 +26,11 @@ class SummaryGeneratorTest {
 		when(chatModel.call(promptCaptor.capture()))
 				.thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("A short summary.")))));
 
-		@SuppressWarnings("unchecked")
-		ObjectProvider<ChatClient.Builder> builderProvider = mock(ObjectProvider.class);
-		when(builderProvider.getObject()).thenReturn(ChatClient.builder(chatModel));
+		ChatProviderService chatProviderService = mock(ChatProviderService.class);
+		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
 
 		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.1, 300, 200000);
-		SummaryGenerator generator = new SummaryGenerator(builderProvider, properties);
+		SummaryGenerator generator = new SummaryGenerator(chatProviderService, properties);
 		String summary = generator.summarize("document body", "Focus on timeframes.");
 
 		assertThat(summary).isEqualTo("A short summary.");
@@ -52,12 +50,11 @@ class SummaryGeneratorTest {
 		when(chatModel.call(promptCaptor.capture()))
 				.thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("summary")))));
 
-		@SuppressWarnings("unchecked")
-		ObjectProvider<ChatClient.Builder> builderProvider = mock(ObjectProvider.class);
-		when(builderProvider.getObject()).thenReturn(ChatClient.builder(chatModel));
+		ChatProviderService chatProviderService = mock(ChatProviderService.class);
+		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
 
 		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.33, 300, 200000);
-		SummaryGenerator generator = new SummaryGenerator(builderProvider, properties);
+		SummaryGenerator generator = new SummaryGenerator(chatProviderService, properties);
 		generator.summarize("document body", null);
 
 		assertThat(promptCaptor.getValue().getOptions().getTemperature()).isEqualTo(0.33);

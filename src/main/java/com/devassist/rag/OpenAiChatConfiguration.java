@@ -35,10 +35,14 @@ public class OpenAiChatConfiguration {
 		// OpenAIClient/OpenAIClientAsync itself from these options when
 		// neither is supplied explicitly, so no manual client wiring is
 		// needed here.
-		String apiKey = resolved.getApiKey();
-		if (apiKey == null || apiKey.isEmpty()) {
-			apiKey = "";
-		}
+		// null only arises when this bean is constructed directly in a unit
+		// test bypassing Spring's property binding (AbstractOpenAiProperties'
+		// apiKey field has no initializer) - the real app always binds an
+		// empty string via spring.ai.openai.api-key=${OPENAI_API_KEY:}. Both
+		// must become "" here: a null API key makes the OpenAI SDK fall
+		// through to its own env-var-reading fallback instead of its
+		// deterministic no-auth-mode path.
+		String apiKey = resolved.getApiKey() == null ? "" : resolved.getApiKey();
 
 		OpenAiChatOptions options = OpenAiChatOptions.builder()
 				.apiKey(apiKey)

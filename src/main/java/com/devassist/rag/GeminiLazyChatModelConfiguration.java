@@ -22,10 +22,11 @@ import org.springframework.stereotype.Component;
  * therefore the API-key validation) to the first real query/summarize call,
  * instead of a blanket spring.main.lazy-initialization, which would hide
  * unrelated startup failures across the whole app. This is the intentional,
- * documented exception to "constructor injection only": GenerationService and
- * SummaryGenerator resolve their ChatClient.Builder via ObjectProvider (still
- * constructor-injected) rather than a direct instance, so their own
- * construction does not force these now-lazy beans into existence early.
+ * documented exception to "constructor injection only": GenerationService,
+ * JudgeService, and SummaryGenerator resolve their ChatClient.Builder via
+ * ChatProviderService (still constructor-injected) rather than a direct
+ * instance, so their own construction does not force these now-lazy beans
+ * into existence early.
  */
 @Component
 public class GeminiLazyChatModelConfiguration implements BeanFactoryPostProcessor {
