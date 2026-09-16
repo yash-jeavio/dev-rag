@@ -3,8 +3,6 @@ services:
     image: ollama/ollama:latest
     volumes:
       - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
 
   ollama-pull:
     image: ollama/ollama:latest

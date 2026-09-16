@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.devassist.common.AbstractErrorResponseExceptionHandler;
 import com.devassist.common.ErrorResponse;
 
 // Scoped to EvalController only, and deliberately separate from
@@ -12,8 +13,10 @@ import com.devassist.common.ErrorResponse;
 // package, and adding a handler for an `eval`-package exception there
 // would make `rag` depend on `eval` - backwards, per this feature's own
 // one-way dependency rule (eval depends on rag, never the reverse).
+// No MethodArgumentNotValidException conflict here (unlike the other three
+// handlers) since EvalController.run() takes no request body to validate.
 @RestControllerAdvice(assignableTypes = EvalController.class)
-public class EvalExceptionHandler {
+public class EvalExceptionHandler extends AbstractErrorResponseExceptionHandler {
 
 	@ExceptionHandler(EvalCorpusNotReadyException.class)
 	@ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)

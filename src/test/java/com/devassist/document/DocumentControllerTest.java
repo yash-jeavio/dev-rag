@@ -263,4 +263,18 @@ class DocumentControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.length()").value(0));
 	}
+
+	@Test
+	void createFromTextReturnsBadRequestWhenBodyIsMalformedJson() throws Exception {
+		mockMvc.perform(post("/api/projects/{projectId}/documents/text", "project-1")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{ not valid json"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void createFromFileReturnsBadRequestWhenFilePartIsMissing() throws Exception {
+		mockMvc.perform(multipart("/api/projects/{projectId}/documents", "project-1"))
+				.andExpect(status().isBadRequest());
+	}
 }

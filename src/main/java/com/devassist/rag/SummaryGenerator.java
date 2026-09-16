@@ -1,5 +1,7 @@
 package com.devassist.rag;
 
+import java.util.Locale;
+
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.ai.chat.client.ChatClient;
@@ -45,7 +47,7 @@ public class SummaryGenerator {
 				.defaultOptions(ChatOptions.builder().temperature(properties.temperature()))
 				.build();
 
-		String provider = chatProviderService.get().name().toLowerCase();
+		String provider = chatProviderService.get().name().toLowerCase(Locale.ROOT);
 		Timer.Sample sample = Timer.start(meterRegistry);
 		ChatResponse response = chatClient.prompt()
 				.user("%s\n\nDocument:\n%s".formatted(steer, text))
@@ -54,10 +56,12 @@ public class SummaryGenerator {
 		sample.stop(meterRegistry.timer("rag.summarization.duration", "provider", provider));
 
 		Usage usage = response.getMetadata().getUsage();
+		int promptTokens = (usage.getPromptTokens() != null) ? usage.getPromptTokens() : 0;
+		int completionTokens = (usage.getCompletionTokens() != null) ? usage.getCompletionTokens() : 0;
 		meterRegistry.counter("rag.summarization.tokens", "provider", provider, "type", "prompt")
-				.increment(usage.getPromptTokens());
+				.increment(promptTokens);
 		meterRegistry.counter("rag.summarization.tokens", "provider", provider, "type", "completion")
-				.increment(usage.getCompletionTokens());
+				.increment(completionTokens);
 
 		return response.getResult().getOutput().getText();
 	}

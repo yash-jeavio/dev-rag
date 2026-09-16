@@ -1,5 +1,7 @@
 package com.devassist.rag;
 
+import java.util.Locale;
+
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.ai.chat.client.ChatClient;
@@ -50,7 +52,7 @@ public class GenerationService {
 				.defaultOptions(ChatOptions.builder().temperature(properties.temperature()))
 				.build();
 
-		String provider = chatProviderService.get().name().toLowerCase();
+		String provider = chatProviderService.get().name().toLowerCase(Locale.ROOT);
 		Timer.Sample sample = Timer.start(meterRegistry);
 		ChatResponse response = chatClient.prompt()
 				.user("Context:\n%s\n\nQuestion: %s".formatted(context, question))
@@ -59,10 +61,11 @@ public class GenerationService {
 		sample.stop(meterRegistry.timer("rag.generation.duration", "provider", provider));
 
 		Usage usage = response.getMetadata().getUsage();
-		meterRegistry.counter("rag.generation.tokens", "provider", provider, "type", "prompt")
-				.increment(usage.getPromptTokens());
+		int promptTokens = (usage.getPromptTokens() != null) ? usage.getPromptTokens() : 0;
+		int completionTokens = (usage.getCompletionTokens() != null) ? usage.getCompletionTokens() : 0;
+		meterRegistry.counter("rag.generation.tokens", "provider", provider, "type", "prompt").increment(promptTokens);
 		meterRegistry.counter("rag.generation.tokens", "provider", provider, "type", "completion")
-				.increment(usage.getCompletionTokens());
+				.increment(completionTokens);
 
 		return response.getResult().getOutput().getText();
 	}

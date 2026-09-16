@@ -5,13 +5,17 @@ import java.util.Arrays;
 import com.google.genai.errors.ApiException;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.beans.factory.BeanCreationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
 
+import com.devassist.common.AbstractErrorResponseExceptionHandler;
 import com.devassist.common.ErrorResponse;
 import com.devassist.document.DocumentNotFoundException;
 import com.devassist.project.ProjectNotFoundException;
@@ -19,7 +23,7 @@ import com.openai.errors.OpenAIException;
 
 @RestControllerAdvice(assignableTypes = { IndexStatusController.class, RagQueryController.class,
 		SummarizationController.class })
-public class RagExceptionHandler {
+public class RagExceptionHandler extends AbstractErrorResponseExceptionHandler {
 
 	// Kept in sync by hand with handleAiFailure's @ExceptionHandler list below -
 	// Java annotation attributes require compile-time class literals, so this
@@ -36,10 +40,16 @@ public class RagExceptionHandler {
 		return ErrorResponse.of(HttpStatus.NOT_FOUND, ex.getMessage());
 	}
 
-	@ExceptionHandler(MethodArgumentNotValidException.class)
-	@ResponseStatus(HttpStatus.BAD_REQUEST)
+	// No longer @ExceptionHandler-annotated directly - see the comment on
+	// DocumentExceptionHandler.handleValidation for why.
 	public ErrorResponse handleValidation(MethodArgumentNotValidException ex) {
 		return ErrorResponse.validationFailure(ex);
+	}
+
+	@Override
+	protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
+			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+		return ResponseEntity.status(status).headers(headers).body(handleValidation(ex));
 	}
 
 	// A model or embedding provider being unreachable is not the caller's fault

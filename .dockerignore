@@ -6,3 +6,4 @@ docs/
 specs/
 http/
 *.md
+.env

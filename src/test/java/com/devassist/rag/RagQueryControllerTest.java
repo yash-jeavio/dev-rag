@@ -168,4 +168,12 @@ class RagQueryControllerTest {
 
 		verify(queryService).answer("proj-1", "q", List.of());
 	}
+
+	@Test
+	void returnsBadRequestWhenBodyIsMalformedJson() throws Exception {
+		mockMvc.perform(post("/api/projects/proj-1/query")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{ not valid json"))
+				.andExpect(status().isBadRequest());
+	}
 }

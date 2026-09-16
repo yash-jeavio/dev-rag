@@ -121,4 +121,55 @@ class GenerationServiceTest {
 		assertThat(completionTokens).isNotNull();
 		assertThat(completionTokens.count()).isEqualTo(17);
 	}
+
+	@Test
+	void recordsNoMetricWhenTheModelCallFails() {
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getOptions()).thenReturn(ChatOptions.builder().build());
+		when(chatModel.call(any(Prompt.class))).thenThrow(new RuntimeException("provider unavailable"));
+
+		ChatProviderService chatProviderService = mock(ChatProviderService.class);
+		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
+		when(chatProviderService.get()).thenReturn(ChatProvider.GEMINI);
+
+		MeterRegistry meterRegistry = new SimpleMeterRegistry();
+		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.1, 300, 200000);
+		GenerationService service = new GenerationService(chatProviderService, properties, meterRegistry);
+
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.generate("context", "question"))
+				.isInstanceOf(RuntimeException.class);
+
+		assertThat(meterRegistry.find("rag.generation.duration").timer()).isNull();
+		assertThat(meterRegistry.find("rag.generation.tokens").counter()).isNull();
+	}
+
+	@Test
+	void treatsNullTokenCountsAsZeroInsteadOfThrowing() {
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getOptions()).thenReturn(ChatOptions.builder().build());
+
+		org.springframework.ai.chat.metadata.Usage usageWithNullCounts = mock(
+				org.springframework.ai.chat.metadata.Usage.class);
+		when(usageWithNullCounts.getPromptTokens()).thenReturn(null);
+		when(usageWithNullCounts.getCompletionTokens()).thenReturn(null);
+		when(chatModel.call(any(Prompt.class))).thenReturn(new ChatResponse(
+				List.of(new Generation(new AssistantMessage("answer"))),
+				ChatResponseMetadata.builder().usage(usageWithNullCounts).build()));
+
+		ChatProviderService chatProviderService = mock(ChatProviderService.class);
+		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
+		when(chatProviderService.get()).thenReturn(ChatProvider.GEMINI);
+
+		MeterRegistry meterRegistry = new SimpleMeterRegistry();
+		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.1, 300, 200000);
+		GenerationService service = new GenerationService(chatProviderService, properties, meterRegistry);
+
+		String answer = service.generate("context", "question");
+
+		assertThat(answer).isEqualTo("answer");
+		Counter promptTokens = meterRegistry.find("rag.generation.tokens").tag("type", "prompt").counter();
+		assertThat(promptTokens.count()).isEqualTo(0);
+		Counter completionTokens = meterRegistry.find("rag.generation.tokens").tag("type", "completion").counter();
+		assertThat(completionTokens.count()).isEqualTo(0);
+	}
 }

@@ -244,4 +244,10 @@ class ProjectControllerTest {
 				"""))
 				.andExpect(status().isNotFound());
 	}
+
+	@Test
+	void createReturnsBadRequestWhenBodyIsMalformedJson() throws Exception {
+		mockMvc.perform(post("/api/projects").contentType(MediaType.APPLICATION_JSON).content("{ not valid json"))
+				.andExpect(status().isBadRequest());
+	}
 }
