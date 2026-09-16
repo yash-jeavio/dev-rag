@@ -6,6 +6,7 @@ import com.google.genai.errors.ApiException;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -63,10 +64,22 @@ class RagExceptionHandlerTest {
 
 	@Test
 	void mapsAnyOtherExceptionToInternalServerErrorWithAGenericMessage() {
-		ErrorResponse response = handler.handleUnexpected(new RuntimeException("some internal detail"));
+		ResponseEntity<ErrorResponse> responseEntity = handler.handleUnexpected(new RuntimeException("some internal detail"));
 
-		assertThat(response.status()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
+		assertThat(responseEntity.getStatusCode().value()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
+		ErrorResponse response = responseEntity.getBody();
 		assertThat(response.message()).isEqualTo("An unexpected error occurred");
 		assertThat(response.message()).doesNotContain("some internal detail");
+	}
+
+	@Test
+	void mapsAWrappedAiProviderFailureReachingTheCatchAllToServiceUnavailableWithTheRootCauseMessage() {
+		ApiException rootCause = new ApiException(404, "NOT_FOUND", "model retired");
+		ResponseEntity<ErrorResponse> responseEntity = handler
+				.handleUnexpected(new RuntimeException("Failed to generate content", rootCause));
+
+		assertThat(responseEntity.getStatusCode().value()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+		ErrorResponse response = responseEntity.getBody();
+		assertThat(response.message()).contains("model retired");
 	}
 }

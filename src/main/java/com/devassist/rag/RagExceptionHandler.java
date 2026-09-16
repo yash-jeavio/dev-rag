@@ -5,6 +5,7 @@ import com.google.genai.errors.ClientException;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -56,9 +57,33 @@ public class RagExceptionHandler {
 	}
 
 	@ExceptionHandler(Exception.class)
-	@ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-	public ErrorResponse handleUnexpected(Exception ex) {
-		return ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
+	public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
+		if (hasAiFailureCause(ex)) {
+			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+					.body(ErrorResponse.of(HttpStatus.SERVICE_UNAVAILABLE, "AI provider unavailable: " + deepestMessage(ex)));
+		}
+		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+				.body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred"));
+	}
+
+	// A generic catch-all here would otherwise win over handleAiFailure for an
+	// AI-provider exception that arrives wrapped in a bare RuntimeException/
+	// Exception (see the comment on handleAiFailure): Spring prefers any direct
+	// type match (Exception matches every Throwable) over ever falling back to
+	// searching the cause chain, so without this check a wrapped ApiException/
+	// OpenAIException/etc. would be misreported as a generic 500 instead of the
+	// existing, more specific 503.
+	private boolean hasAiFailureCause(Throwable ex) {
+		Throwable current = ex;
+		while (current != null) {
+			if (current instanceof NonTransientAiException || current instanceof BeanCreationException
+					|| current instanceof ApiException || current instanceof OpenAIException) {
+				return true;
+			}
+			Throwable cause = current.getCause();
+			current = (cause != current) ? cause : null;
+		}
+		return false;
 	}
 
 	// Spring passes the exception instance that was actually thrown, which may
