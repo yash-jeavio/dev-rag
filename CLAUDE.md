@@ -16,7 +16,7 @@ DevAssist (Maven artifact: `devassist`, base package: `com.devassist`) is a Spri
 - **Testing:** Spring Boot Test, including the MVC test slice (`spring-boot-starter-webmvc-test`) and validation test slice (`spring-boot-starter-validation-test`), on JUnit 5 (Jupiter)
 - **Packaging:** Executable jar via `spring-boot-maven-plugin`
 
-No database, persistence, containerization, or AI/LLM integration is present yet. See [Section 9](#9-important-rules-for-ai-assisted-development).
+No database, persistence, containerization, or AI/LLM integration is present yet, but all four are now in scope as part of the RAG capstone project layered on top of this application — see [Section 9](#9-important-rules-for-ai-assisted-development) for how to introduce them.
 
 ## 3. Build and Test Commands
 
@@ -66,7 +66,7 @@ This is a single-module, single-package project today. As functionality is added
 - Keep controllers thin — request/response mapping and validation only; push business logic into service classes.
 - Use Spring Validation (`jakarta.validation` annotations, `@Valid`/`@Validated`) for input validation at controller boundaries.
 - Favor immutable request/response DTOs (records are a good fit for Java 17) over reusing entity/domain objects directly in the web layer.
-- No persistence layer exists yet — do not introduce repositories, entities, or a database until explicitly requested (see Section 9).
+- No persistence layer exists yet. A vector store (PGVector) is now in scope for the RAG capstone (see Section 9) — introduce it, and any other persistence, only for capstone services that genuinely need it, not speculatively elsewhere in the app.
 
 ## 7. Dependency Guidelines
 
@@ -95,7 +95,10 @@ This is a single-module, single-package project today. As functionality is added
 - **Follow standard Java and Spring conventions** rather than inventing project-specific patterns.
 - **Use constructor injection** for all Spring-managed dependencies.
 - **Write tests for new business logic.**
-- **Do not add Anthropic API integration yet** — this is explicitly out of scope until requested.
-- **Do not add RAG, PGVector, Docker, or database functionality yet** — explicitly out of scope until requested.
-- **Do not modify unrelated files when implementing a feature.** Keep diffs scoped to the task at hand.
-- When a request implies one of the "not yet" items above, flag the conflict and ask before implementing it rather than adding it silently.
+- **RAG, PGVector, Docker, and Anthropic/Gemini API integration are in scope**, specifically for the Milestone 3 RAG capstone (document ingestion, embedding, vector retrieval, generation, and their supporting API/Docker setup). This is a deliberate, explicit expansion of the original greenfield scope — recorded here on 2026-09-10 — not a standing invitation to add unrelated AI/infra features elsewhere in the app.
+- **A browser UI and an evaluation harness are also in scope** for the capstone — recorded 2026-09-11. The UI is plain static HTML/CSS/JS under `src/main/resources/static/`, served by Spring Boot with **no frontend framework, build step, or new dependency**; it exists to upload documents, ask questions, and view answers, citations, and evaluation scores. The evaluation harness scores answers with an LLM-as-judge prompt (faithfulness, relevance, appropriate uncertainty).
+- Integrate the model/embedding providers through **Spring AI's abstractions** (`ChatClient`, `EmbeddingModel`, `VectorStore`), not direct vendor SDK calls, so the provider stays swappable.
+- **Start on `SimpleVectorStore` (in-memory), not PGVector.** Documents and projects live in `ConcurrentHashMap`s, so a persistent vector store would leave orphaned embeddings pointing at documents that vanish on restart. Because both implementations satisfy `VectorStore`, moving to `PgVectorStore` later is a bean/config change — so pipeline code must never depend on which one is wired in.
+- **Never hardcode API keys, connection strings, or other secrets** — reference them as environment variables from `application.yml`/`application.properties` only.
+- **Do not modify unrelated files when implementing a feature.** Keep diffs scoped to the task at hand — the capstone's scope expansion does not relax this for existing non-capstone code.
+- When a request would expand scope beyond what's recorded in this file (capstone-related or not), flag the conflict and ask before implementing it rather than adding it silently.
