@@ -10,7 +10,7 @@ services:
     image: ollama/ollama:latest
     depends_on:
       - ollama
-    entrypoint: ["sh", "-c", "sleep 3 && OLLAMA_HOST=ollama:11434 ollama pull nomic-embed-text"]
+    entrypoint: ["sh", "-c", "for i in $(seq 1 10); do OLLAMA_HOST=ollama:11434 ollama pull nomic-embed-text && exit 0; sleep 2; done; exit 1"]
 
   app:
     build: .
