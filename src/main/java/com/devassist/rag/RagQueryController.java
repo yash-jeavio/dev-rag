@@ -22,6 +22,6 @@ public class RagQueryController {
 	@PostMapping
 	public ResponseEntity<RagAnswerResponse> query(@PathVariable String projectId,
 			@Valid @RequestBody RagQueryRequest request) {
-		return ResponseEntity.ok(queryService.answer(projectId, request.question()));
+		return ResponseEntity.ok(queryService.answer(projectId, request.question(), request.documentIds()));
 	}
 }

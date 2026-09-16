@@ -14,7 +14,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.devassist.project.ProjectNotFoundException;
 
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -31,7 +33,7 @@ class RagQueryControllerTest {
 
 	@Test
 	void returnsAnswerWithSources() throws Exception {
-		when(queryService.answer(anyString(), anyString())).thenReturn(
+		when(queryService.answer(anyString(), anyString(), anyList())).thenReturn(
 				RagAnswerResponse.of("q", "answer [1]", RagAnswerResponse.Status.ANSWERED,
 						List.of(new SourceReference("doc-1", "a.md", 0, 0.82, true, "text")), 12));
 
@@ -53,7 +55,7 @@ class RagQueryControllerTest {
 
 	@Test
 	void returnsNotFoundForUnknownProject() throws Exception {
-		when(queryService.answer(anyString(), anyString()))
+		when(queryService.answer(anyString(), anyString(), anyList()))
 				.thenThrow(new ProjectNotFoundException("proj-x"));
 
 		mockMvc.perform(post("/api/projects/proj-x/query")
@@ -64,7 +66,7 @@ class RagQueryControllerTest {
 
 	@Test
 	void returnsServiceUnavailableWhenTheAiProviderFails() throws Exception {
-		when(queryService.answer(anyString(), anyString()))
+		when(queryService.answer(anyString(), anyString(), anyList()))
 				.thenThrow(new NonTransientAiException("model unreachable"));
 
 		mockMvc.perform(post("/api/projects/proj-1/query")
@@ -82,7 +84,7 @@ class RagQueryControllerTest {
 	// must map to the same 503 as a live provider failure, not a bare 500.
 	@Test
 	void returnsServiceUnavailableWhenTheChatModelBeanFailsToBuild() throws Exception {
-		when(queryService.answer(anyString(), anyString()))
+		when(queryService.answer(anyString(), anyString(), anyList()))
 				.thenThrow(new BeanCreationException("googleGenAiClient", "Incomplete Google GenAI configuration"));
 
 		mockMvc.perform(post("/api/projects/proj-1/query")
@@ -107,7 +109,7 @@ class RagQueryControllerTest {
 	void returnsServiceUnavailableWithTheRootCauseWhenGoogleRejectsTheModel() throws Exception {
 		ClientException modelRetired = new ClientException(404, "NOT_FOUND",
 				"This model models/gemini-2.5-flash is no longer available to new users.");
-		when(queryService.answer(anyString(), anyString()))
+		when(queryService.answer(anyString(), anyString(), anyList()))
 				.thenThrow(new RuntimeException("Failed to generate content", modelRetired));
 
 		mockMvc.perform(post("/api/projects/proj-1/query")
@@ -130,12 +132,40 @@ class RagQueryControllerTest {
 		com.openai.errors.UnauthorizedException openAiFailure = com.openai.errors.UnauthorizedException.builder()
 				.headers(com.openai.core.http.Headers.builder().build())
 				.build();
-		when(queryService.answer(anyString(), anyString())).thenThrow(openAiFailure);
+		when(queryService.answer(anyString(), anyString(), anyList())).thenThrow(openAiFailure);
 
 		mockMvc.perform(post("/api/projects/proj-1/query")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"question\":\"q\"}"))
 				.andExpect(status().isServiceUnavailable())
 				.andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("401")));
+	}
+
+	@Test
+	void passesDocumentIdsFromTheRequestBodyToTheService() throws Exception {
+		when(queryService.answer(anyString(), anyString(), anyList())).thenReturn(
+				RagAnswerResponse.of("q", "answer [1]", RagAnswerResponse.Status.ANSWERED,
+						List.of(new SourceReference("doc-1", "a.md", 0, 0.82, true, "text")), 12));
+
+		mockMvc.perform(post("/api/projects/proj-1/query")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"question\":\"q\",\"documentIds\":[\"doc-1\",\"doc-3\"]}"))
+				.andExpect(status().isOk());
+
+		verify(queryService).answer("proj-1", "q", List.of("doc-1", "doc-3"));
+	}
+
+	@Test
+	void omittingDocumentIdsStillSearchesTheWholeProject() throws Exception {
+		when(queryService.answer(anyString(), anyString(), anyList())).thenReturn(
+				RagAnswerResponse.of("q", "answer [1]", RagAnswerResponse.Status.ANSWERED,
+						List.of(new SourceReference("doc-1", "a.md", 0, 0.82, true, "text")), 12));
+
+		mockMvc.perform(post("/api/projects/proj-1/query")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"question\":\"q\"}"))
+				.andExpect(status().isOk());
+
+		verify(queryService).answer("proj-1", "q", List.of());
 	}
 }
