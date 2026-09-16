@@ -11,6 +11,7 @@ import com.devassist.project.ProjectService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -57,5 +58,23 @@ class RagQueryServiceTest {
 		assertThat(response.sources()).hasSize(1);
 		assertThat(response.sources().get(0).cited()).isTrue();
 		assertThat(response.evaluation()).isNull();
+	}
+
+	@Test
+	void passesDocumentIdsThroughToRetrieval() {
+		when(retrievalService.retrieve(anyString(), anyString(), anyList())).thenReturn(List.of());
+
+		service.answer("proj-1", "question", List.of("doc-1", "doc-2"));
+
+		verify(retrievalService).retrieve("proj-1", "question", List.of("doc-1", "doc-2"));
+	}
+
+	@Test
+	void theTwoArgOverloadDelegatesWithAnEmptyDocumentIdsList() {
+		when(retrievalService.retrieve(anyString(), anyString(), anyList())).thenReturn(List.of());
+
+		service.answer("proj-1", "question");
+
+		verify(retrievalService).retrieve("proj-1", "question", List.of());
 	}
 }
