@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "devassist-tools": {
+      "command": "node",
+      "args": [".claude/mcp-servers/devassist-tools/server.mjs"]
+    }
+  }
+}

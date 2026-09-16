@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Claude ###
+.claude/worktrees
+.claude/mcp-servers/*/node_modules
+.claude/settings.local.json

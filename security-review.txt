@@ -1,0 +1,46 @@
+I now have the full picture of the codebase (the "project management API" feature). Here's the review.
+
+## Security Review: DevAssist — Project Management API
+
+**Scope reviewed:** `com.devassist.project.*` (Controller, Service, DTOs, exception handling), `pom.xml`, `application.properties`. No files modified.
+
+### Findings
+
+**1. No authentication/authorization on any endpoint — High**
+`ProjectController` exposes `POST /api/projects` and `GET /api/projects/{id}` with zero access control. No Spring Security dependency is present at all. Anyone who can reach the service can create arbitrary projects or read any project by ID.
+- *Risk:* Since IDs are UUIDs (unguessable), read access is bounded by ID enumeration difficulty, but there's no tenancy/ownership model — any caller can read any project. Recommend flagging this as a conscious scope decision (per CLAUDE.md §9, "not yet" features need explicit sign-off) rather than an oversight, and adding auth before this goes beyond a prototype.
+
+**2. Unbounded, unauthenticated resource growth — Medium (DoS)**
+`ProjectService` stores projects in an in-memory `ConcurrentHashMap` with no size cap, TTL, or rate limiting on `POST /api/projects` (`ProjectService.java:12-19`). An unauthenticated client can call `create` in a loop indefinitely, growing heap usage without bound until the JVM OOMs. Combined with finding #1, this is a low-effort DoS vector.
+
+**3. `@URL` on `repositoryUrl` doesn't restrict scheme — Medium (SSRF-enabling design risk)**
+`CreateProjectRequest.repositoryUrl` (`CreateProjectRequest.java:11`) uses Hibernate Validator's `@URL`, which by default only checks that the string is *syntactically* a URL — it does not restrict to `http`/`https`. Values like `file:///etc/passwd`, `ftp://...`, or `http://169.254.169.254/latest/meta-data/` (cloud metadata endpoint) will pass validation. This field isn't fetched anywhere today, but as a "repository URL" it's a prime candidate to be fetched/cloned later (e.g., a future feature that pulls repo metadata). Storing unrestricted schemes now means the SSRF guard has to be retrofitted later and may be missed.
+- *Recommendation:* Constrain with `@URL(protocol = "https")` (or explicitly allow `http`/`https` only) now, while the cost of doing so is trivial, rather than after a consumer of this field is built.
+
+**4. Unsanitized free-text fields returned verbatim — Low (stored-XSS-adjacent)**
+`name` and `description` accept arbitrary text (no HTML/script filtering) and are echoed back unmodified in `ProjectResponse` (`ProjectResponse.java`). Currently the API only serializes JSON, so there's no direct XSS in this service. But if any future frontend renders these fields into HTML without escaping, this becomes stored XSS. Not an action item today, but worth noting as an assumption the API is implicitly making about its consumers.
+
+**5. Exception handler scope is narrow; only two exception types handled — Low**
+`ProjectExceptionHandler` (`ProjectExceptionHandler.java:12`) is scoped to `ProjectController` via `assignableTypes` and only handles `MethodArgumentNotValidException` and `ProjectNotFoundException`. Any other unexpected exception (e.g., a future `NullPointerException` in service logic) falls through to Spring Boot's default `/error` handling. Spring Boot's default `server.error.include-stacktrace=never` means this is safe out of the box, but there's no explicit catch-all (`Exception.class` → 500) here to guarantee that stays true if error-handling config is ever changed. Consider a generic fallback handler returning a sanitized 500 body, so info-leak protection doesn't depend solely on default config.
+
+**6. User-controlled `id` echoed in error messages — Low (information handling)**
+`ProjectNotFoundException` (`ProjectNotFoundException.java:6`) embeds the raw path-variable `id` into the exception message, which is returned verbatim in the JSON error body (`ProjectExceptionHandler.java:27`). Low risk given JSON content-type, but it is unvalidated reflected input — no length cap or character filtering on `id` before it's embedded in a response body. Not exploitable today, but worth bounding if this pattern is reused elsewhere.
+
+**7. No request size/rate limiting configured — Low**
+`description` allows up to 2000 characters (fine) but there's no global request body size limit or rate limiting configured in `application.properties`. Combined with #2, this compounds the DoS surface.
+
+### What's solid
+- Constructor injection used throughout — no field injection.
+- `@Valid`/`jakarta.validation` used correctly at the controller boundary (`@NotBlank`, `@Size`).
+- IDs are `UUID.randomUUID()` — non-sequential, not enumerable.
+- No SQL/command/reflection usage anywhere, so no injection vectors in the traditional sense (no persistence layer yet, per CLAUDE.md scope).
+- Validation error responses (`ProjectExceptionHandler.handleValidation`) don't leak internal details — just field + message.
+- Test coverage exercises both validation failure and success paths, including boundary cases (max-length fields).
+
+### Recommendations (priority order)
+1. Decide and document the auth story before this API leaves prototype status (#1) — flag per CLAUDE.md §9 rather than adding silently.
+2. Tighten `@URL` to `protocol = "https"` on `repositoryUrl` now, before any feature consumes it (#3).
+3. Add a basic cap (e.g., max project count, or rate limiting) to `ProjectService.create` if this stays unauthenticated (#2).
+4. Add a catch-all `@ExceptionHandler(Exception.class)` returning a generic sanitized 500 body as defense-in-depth (#5).
+
+No files were modified as part of this review.

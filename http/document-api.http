@@ -1,0 +1,151 @@
+### 1. Create a project first (documents always belong to a project)
+POST {{baseUrl}}/api/projects
+Content-Type: application/json
+
+{
+  "name": "RAG Capstone",
+  "description": "Project used to test document ingestion",
+  "language": "Java",
+  "repositoryUrl": "https://github.com/example/devassist"
+}
+
+> {%
+    client.test("Status is 201", () => response.status === 201);
+    client.global.set("projectId", response.body.id);
+%}
+
+### 2. Upload a Markdown file as a document
+# "file" is the form field name the API expects (see DocumentController.create)
+POST {{baseUrl}}/api/projects/{{projectId}}/documents
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="sample.md"
+Content-Type: text/markdown
+
+< ./sample.md
+--WebAppBoundary--
+
+> {%
+    client.test("Status is 201", () => response.status === 201);
+    client.test("sourceType is MARKDOWN", () => response.body.sourceType === "MARKDOWN");
+    client.global.set("markdownDocId", response.body.id);
+%}
+
+### 3. Upload a PDF file as a document
+POST {{baseUrl}}/api/projects/{{projectId}}/documents
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="sample.pdf"
+Content-Type: application/pdf
+
+< ./sample.pdf
+--WebAppBoundary--
+
+> {%
+    client.test("Status is 201", () => response.status === 201);
+    client.test("sourceType is PDF", () => response.body.sourceType === "PDF");
+    client.test("text was extracted from the PDF", () => response.body.content.includes("DevAssist RAG Notes"));
+    client.global.set("pdfDocId", response.body.id);
+%}
+
+### 4. Ingest a document from raw text (no file at all)
+POST {{baseUrl}}/api/projects/{{projectId}}/documents/text
+Content-Type: application/json
+
+{
+  "title": "Meeting Notes",
+  "content": "We discussed the RAG capstone roadmap and next milestones."
+}
+
+> {%
+    client.test("Status is 201", () => response.status === 201);
+    client.test("sourceType is TEXT", () => response.body.sourceType === "TEXT");
+    client.global.set("textDocId", response.body.id);
+%}
+
+### 5. Read (GET) the Markdown document back
+GET {{baseUrl}}/api/projects/{{projectId}}/documents/{{markdownDocId}}
+
+> {%
+    client.test("Status is 200", () => response.status === 200);
+%}
+
+### 6. Update (PUT) the text document's content
+PUT {{baseUrl}}/api/projects/{{projectId}}/documents/{{textDocId}}/text
+Content-Type: application/json
+
+{
+  "title": "Revised Meeting Notes",
+  "content": "Updated: the roadmap now includes chunking and embeddings."
+}
+
+> {%
+    client.test("Status is 200", () => response.status === 200);
+    client.test("title was updated", () => response.body.title === "Revised Meeting Notes");
+%}
+
+### 7. Update (PUT) the Markdown document by re-uploading a file
+PUT {{baseUrl}}/api/projects/{{projectId}}/documents/{{markdownDocId}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="sample.md"
+Content-Type: text/markdown
+
+< ./sample.md
+--WebAppBoundary--
+
+> {%
+    client.test("Status is 200", () => response.status === 200);
+%}
+
+### 8. Delete the PDF document
+DELETE {{baseUrl}}/api/projects/{{projectId}}/documents/{{pdfDocId}}
+
+> {%
+    client.test("Status is 204", () => response.status === 204);
+%}
+
+### 9. Confirm the deleted document is really gone -> expect 404
+GET {{baseUrl}}/api/projects/{{projectId}}/documents/{{pdfDocId}}
+
+> {%
+    client.test("Status is 404", () => response.status === 404);
+%}
+
+### 10. Error case: unsupported file type -> expect 400
+POST {{baseUrl}}/api/projects/{{projectId}}/documents
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="sample-for-pdf.txt"
+Content-Type: text/plain
+
+< ./sample-for-pdf.txt
+--WebAppBoundary--
+
+> {%
+    client.test("Status is 201 (txt is supported)", () => response.status === 201);
+%}
+
+### 11. Error case: document under a project that doesn't exist -> expect 404
+GET {{baseUrl}}/api/projects/does-not-exist/documents/{{markdownDocId}}
+
+> {%
+    client.test("Status is 404", () => response.status === 404);
+    client.test("message mentions Project not found", () => response.body.message.includes("Project not found"));
+%}
+
+### 12. Error case: missing title on text ingestion -> expect 400 with validation error
+POST {{baseUrl}}/api/projects/{{projectId}}/documents/text
+Content-Type: application/json
+
+{
+  "content": "Body with no title"
+}
+
+> {%
+    client.test("Status is 400", () => response.status === 400);
+%}

@@ -1,0 +1,29 @@
+## Performance Review — DevAssist Project Management API
+
+Scope: `ProjectController`, `ProjectService`, `Project`, DTOs, exception handler (read-only review, no files modified).
+
+### Summary
+The current implementation is minimal (create + get-by-id backed by an in-memory map), so there's no expensive computation today. Findings are mostly forward-looking scalability/concurrency risks that will matter as soon as more endpoints (list, update, delete) or real load are added.
+
+### Findings
+
+**1. Unbounded in-memory store — memory scalability risk (ProjectService.java:12)**
+`projects` is a `ConcurrentHashMap` with no eviction, TTL, or size cap. Every `create()` call adds an entry that lives forever until process restart, with no delete endpoint to reclaim it. Under sustained traffic this is an unbounded memory growth pattern.
+- *Recommendation:* Acceptable for scaffolding (per CLAUDE.md, no DB yet), but flag before this reaches real usage — either add a persistence layer or, if staying in-memory intentionally, bound it (e.g. max size + rejection/eviction policy).
+
+**2. No list endpoint yet, but the obvious future implementation is a footgun**
+There's no `GET /api/projects` today. When one is added, the naive `projects.values().stream().toList()` returns the entire map on every call — O(n) per request with no pagination, sorting, or filtering, and no snapshot isolation guarantees beyond what `ConcurrentHashMap.values()` gives (weakly consistent iteration).
+- *Recommendation:* Design the future list endpoint with pagination (limit/offset or cursor) from the start rather than retrofitting it once the map is large.
+
+**3. Concurrency: correct but worth confirming intent (ProjectService.java:12,14-20)**
+`ConcurrentHashMap` + `put`/`get` is thread-safe and lock-free for these access patterns — no contention issue here. `UUID.randomUUID()` per request is fine at any realistic throughput (SecureRandom cost is negligible compared to request/response overhead).
+- No action needed; this is a correct, appropriately lightweight choice for the current scope.
+
+**4. Exception handler allocates a fresh error-mapping stream per validation failure (ProjectExceptionHandler.java:18-20)**
+Trivial — validation errors are few per request and this only runs on the error path. Not a bottleneck at any realistic scale.
+
+**5. No caching/ETag on `GET /api/projects/{id}`**
+Not a bottleneck given single-record lookups are O(1) against a hash map, but worth noting if this endpoint is ever fronted by a CDN/gateway or called at very high frequency for the same id — conditional GET (ETag/If-None-Match) could cut payload size, not compute cost.
+
+### Overall
+No real bottlenecks exist in the current code — lookups are O(1), writes are lock-free, and request volume is presumably low at this stage. The one substantive risk is **unbounded map growth (#1)**, since there's currently no way to remove entries; that's the item to revisit before any load or long-running-instance scenario. The list-endpoint pagination note (#2) is purely preventative for when that feature is built.

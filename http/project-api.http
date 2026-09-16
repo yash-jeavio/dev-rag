@@ -1,0 +1,49 @@
+### Create a project (id is captured into {{projectId}} for the requests below)
+POST {{baseUrl}}/api/projects
+Content-Type: application/json
+
+{
+  "name": "DevAssist",
+  "description": "Sample project created from IntelliJ HTTP Client",
+  "language": "Java",
+  "repositoryUrl": "https://github.com/example/devassist"
+}
+
+> {%
+    client.test("Status is 201", () => response.status === 201);
+    client.global.set("projectId", response.body.id);
+%}
+
+### Get the project just created
+GET {{baseUrl}}/api/projects/{{projectId}}
+
+> {%
+    client.test("Status is 200", () => response.status === 200);
+%}
+
+### Update the project
+PUT {{baseUrl}}/api/projects/{{projectId}}
+Content-Type: application/json
+
+{
+  "name": "DevAssist Renamed",
+  "description": "Updated manually",
+  "language": "Java",
+  "repositoryUrl": "https://github.com/example/devassist"
+}
+
+> {%
+    client.test("Status is 200", () => response.status === 200);
+    client.test("Name was updated", () => response.body.name === "DevAssist Renamed");
+%}
+
+### Get a project that doesn't exist -> expect 404
+GET {{baseUrl}}/api/projects/does-not-exist
+
+### Create with missing required fields -> expect 400 with per-field validation errors
+POST {{baseUrl}}/api/projects
+Content-Type: application/json
+
+{
+  "description": "missing required fields"
+}

@@ -1,0 +1,24 @@
+Milestone 1
+DevAssist
+ └── Project Management API
+       POST /projects
+       GET /projects/{id}
+
+Milestone 2
+DevAssist
+ ├── SDD
+ ├── Skills
+ ├── Sub-agents
+ ├── AI Code Review
+ ├── MCP
+ └── Guardrails
+
+Milestone 3
+DevAssist
+ └── RAG capabilities
+      ├── Document ingestion
+      ├── Chunking
+      ├── Embeddings
+      ├── Vector storage
+      ├── Retrieval
+      └── AI-powered answers

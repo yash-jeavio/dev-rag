@@ -1,0 +1,4 @@
+DevAssist RAG Notes (PDF version)
+
+This is a sample PDF file used to test the document ingestion pipeline.
+It mentions chunking, embeddings, and vector storage as future stages.
