@@ -91,4 +91,23 @@ class RagQueryControllerTest {
 				.andExpect(jsonPath("$.message").value(
 						org.hamcrest.Matchers.containsString("Incomplete Google GenAI configuration")));
 	}
+
+	// Regression coverage for BR-08 (specs/chat-provider-switching.md): the
+	// same 503 mapping RagExceptionHandler already gives Google's
+	// NonTransientAiException/BeanCreationException must also cover OpenAI's
+	// own exception hierarchy, since a user can now switch the active
+	// provider to OpenAI at runtime.
+	@Test
+	void returnsServiceUnavailableWhenOpenAiRejectsTheRequest() throws Exception {
+		com.openai.errors.UnauthorizedException openAiFailure = com.openai.errors.UnauthorizedException.builder()
+				.headers(com.openai.core.http.Headers.builder().build())
+				.build();
+		when(queryService.answer(anyString(), anyString())).thenThrow(openAiFailure);
+
+		mockMvc.perform(post("/api/projects/proj-1/query")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"question\":\"q\"}"))
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("401")));
+	}
 }

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.devassist.document.DocumentNotFoundException;
 import com.devassist.project.ProjectNotFoundException;
+import com.openai.errors.OpenAIException;
 
 @RestControllerAdvice(assignableTypes = { IndexStatusController.class, RagQueryController.class,
 		SummarizationController.class })
@@ -40,7 +41,12 @@ public class RagExceptionHandler {
 	// built in the first place (e.g. GEMINI_API_KEY missing) - GenerationService
 	// and SummaryGenerator resolve it lazily via ObjectProvider, so that failure
 	// now surfaces here at call time instead of at application startup.
-	@ExceptionHandler({ NonTransientAiException.class, BeanCreationException.class })
+	// OpenAIException (com.openai.errors) is the root of every failure the
+	// OpenAI SDK itself can throw - missing/invalid key, quota, bad request,
+	// server errors, network I/O - all of its subtypes extend this one class.
+	// This covers OpenAI once a user switches the active provider to it via
+	// ChatProviderService.
+	@ExceptionHandler({ NonTransientAiException.class, BeanCreationException.class, OpenAIException.class })
 	@ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
 	public Map<String, Object> handleAiFailure(RuntimeException ex) {
 		return Map.of("status", HttpStatus.SERVICE_UNAVAILABLE.value(),
