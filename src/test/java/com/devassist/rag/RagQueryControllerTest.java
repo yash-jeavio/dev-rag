@@ -2,6 +2,7 @@ package com.devassist.rag;
 
 import java.util.List;
 
+import com.google.genai.errors.ClientException;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.beans.factory.BeanCreationException;
@@ -90,5 +91,32 @@ class RagQueryControllerTest {
 				.andExpect(status().isServiceUnavailable())
 				.andExpect(jsonPath("$.message").value(
 						org.hamcrest.Matchers.containsString("Incomplete Google GenAI configuration")));
+	}
+
+	// Regression test for a real failure observed against the live Gemini API:
+	// a retired/invalid model name comes back as com.google.genai.errors.
+	// ClientException, wrapped by Spring AI's ChatClient call chain in a
+	// generic RuntimeException before it reaches this controller. This proves
+	// two things: (1) the ApiException family is still caught even though it
+	// is not the directly-thrown type, because @ExceptionHandler matches
+	// anywhere in the cause chain (Spring 5.3+); and (2) the surfaced message
+	// is Google's actual explanation, not the generic wrapper text - a caller
+	// seeing only "Failed to generate content" would have no idea the fix is
+	// to change the configured model name.
+	@Test
+	void returnsServiceUnavailableWithTheRootCauseWhenGoogleRejectsTheModel() throws Exception {
+		ClientException modelRetired = new ClientException(404, "NOT_FOUND",
+				"This model models/gemini-2.5-flash is no longer available to new users.");
+		when(queryService.answer(anyString(), anyString()))
+				.thenThrow(new RuntimeException("Failed to generate content", modelRetired));
+
+		mockMvc.perform(post("/api/projects/proj-1/query")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"question\":\"q\"}"))
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.message").value(
+						org.hamcrest.Matchers.containsString("no longer available to new users")))
+				.andExpect(jsonPath("$.message").value(
+						org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Failed to generate content"))));
 	}
 }
