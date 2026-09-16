@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DevAssist RAG Tester</title>
+<style>
+	:root {
+		--bg: #0f1117;
+		--panel: #171a23;
+		--border: #2a2e3a;
+		--text: #e6e8ee;
+		--muted: #8b90a0;
+		--accent: #5b8cff;
+		--good: #3ecf8e;
+		--bad: #ff6b6b;
+		--warn: #ffb84d;
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		background: var(--bg);
+		color: var(--text);
+	}
+	header {
+		padding: 20px 28px;
+		border-bottom: 1px solid var(--border);
+	}
+	header h1 { margin: 0; font-size: 18px; }
+	header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+	main {
+		max-width: 1000px;
+		margin: 0 auto;
+		padding: 24px 28px 60px;
+		display: grid;
+		gap: 24px;
+	}
+	.panel {
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		padding: 20px;
+	}
+	.panel h2 {
+		margin: 0 0 14px;
+		font-size: 14px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--muted);
+	}
+	label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+	input[type=text], textarea, input[type=file] {
+		width: 100%;
+		background: #0c0e14;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--text);
+		padding: 10px 12px;
+		font-size: 14px;
+		font-family: inherit;
+	}
+	textarea { resize: vertical; min-height: 70px; }
+	.row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+	.row > div { flex: 1; min-width: 200px; }
+	button {
+		background: var(--accent);
+		color: white;
+		border: none;
+		border-radius: 6px;
+		padding: 10px 18px;
+		font-size: 14px;
+		cursor: pointer;
+	}
+	button:hover { opacity: 0.9; }
+	button:disabled { opacity: 0.5; cursor: default; }
+	button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+	.tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+	.tabs button.tab { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 6px 14px; font-size: 13px; }
+	.tabs button.tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+	.hidden { display: none; }
+	#docList { display: grid; gap: 8px; margin-top: 14px; }
+	.doc-row {
+		display: flex; justify-content: space-between; align-items: center;
+		padding: 10px 12px; background: #0c0e14; border-radius: 6px; border: 1px solid var(--border);
+		font-size: 13px;
+	}
+	.doc-row .title { font-weight: 600; }
+	.doc-row .meta { color: var(--muted); margin-left: 8px; }
+	.badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+	.badge.INDEXED { background: rgba(62,207,142,0.15); color: var(--good); }
+	.badge.FAILED { background: rgba(255,107,107,0.15); color: var(--bad); }
+	.doc-actions button { padding: 5px 10px; font-size: 12px; margin-left: 6px; }
+	#answerBox { margin-top: 16px; }
+	.status-line { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+	.status-line .badge.ANSWERED { background: rgba(62,207,142,0.15); color: var(--good); }
+	.status-line .badge.INSUFFICIENT_CONTEXT { background: rgba(255,184,77,0.15); color: var(--warn); }
+	.answer-text { font-size: 15px; line-height: 1.5; padding: 14px; background: #0c0e14; border-radius: 8px; border: 1px solid var(--border); }
+	.source {
+		margin-top: 10px; padding: 10px 12px; background: #0c0e14; border-radius: 6px;
+		border-left: 3px solid var(--border); font-size: 13px;
+	}
+	.source.cited { border-left-color: var(--good); }
+	.source .src-head { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 4px; }
+	.source .excerpt { color: var(--text); }
+	.muted { color: var(--muted); font-size: 13px; }
+	.error-text { color: var(--bad); font-size: 13px; margin-top: 8px; }
+	.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
+	@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+	<h1>DevAssist &mdash; RAG Tester</h1>
+	<p id="projectLine">Loading project&hellip;</p>
+</header>
+
+<main>
+
+	<section class="panel">
+		<h2>1. Add a document</h2>
+		<div class="tabs">
+			<button class="tab active" data-tab="text">Paste text</button>
+			<button class="tab" data-tab="file">Upload file</button>
+		</div>
+
+		<div id="tab-text">
+			<div class="row">
+				<div>
+					<label for="textTitle">Title</label>
+					<input type="text" id="textTitle" placeholder="e.g. refund-policy">
+				</div>
+			</div>
+			<label for="textContent">Content</label>
+			<textarea id="textContent" placeholder="Paste some text here&hellip;"></textarea>
+			<div style="margin-top:12px;">
+				<button id="ingestTextBtn">Ingest text</button>
+			</div>
+		</div>
+
+		<div id="tab-file" class="hidden">
+			<label for="fileInput">File (.txt .md .pdf .doc .docx .xls .xlsx .ppt .pptx .html)</label>
+			<input type="file" id="fileInput">
+			<div style="margin-top:12px;">
+				<button id="ingestFileBtn">Ingest file</button>
+			</div>
+		</div>
+
+		<div id="ingestResult" class="muted" style="margin-top:12px;"></div>
+	</section>
+
+	<section class="panel">
+		<h2>2. Documents in this project</h2>
+		<button class="secondary" id="refreshDocsBtn">Refresh</button>
+		<div id="docList"><p class="muted">No documents yet.</p></div>
+	</section>
+
+	<section class="panel">
+		<h2>3. Ask a question</h2>
+		<textarea id="questionInput" placeholder="Ask something about the documents above&hellip;"></textarea>
+		<div style="margin-top:12px;">
+			<button id="askBtn">Ask</button>
+		</div>
+		<div id="answerBox"></div>
+	</section>
+
+</main>
+
+<script>
+	// The UI hides the project concept from the user entirely, per the design
+	// agreed for this sub-project: a single default project is created (or
+	// reused) automatically, so the experience is "upload, then ask" with no
+	// project-picker step. The backend still scopes everything by projectId.
+	let projectId = null;
+
+	async function init() {
+		const res = await fetch('/api/projects');
+		const projects = await res.json();
+		if (projects.length > 0) {
+			projectId = projects[0].id;
+		} else {
+			const created = await fetch('/api/projects', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					name: 'Default',
+					description: 'Auto-created for the manual test UI',
+					language: 'N/A',
+					repositoryUrl: 'https://example.com/default'
+				})
+			}).then(r => r.json());
+			projectId = created.id;
+		}
+		document.getElementById('projectLine').textContent = 'Project: ' + projectId;
+		await refreshDocs();
+	}
+
+	// --- Tabs ---
+	document.querySelectorAll('.tab').forEach(tab => {
+		tab.addEventListener('click', () => {
+			document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+			tab.classList.add('active');
+			document.getElementById('tab-text').classList.toggle('hidden', tab.dataset.tab !== 'text');
+			document.getElementById('tab-file').classList.toggle('hidden', tab.dataset.tab !== 'file');
+		});
+	});
+
+	// --- Ingest text ---
+	document.getElementById('ingestTextBtn').addEventListener('click', async () => {
+		const title = document.getElementById('textTitle').value.trim();
+		const content = document.getElementById('textContent').value.trim();
+		const out = document.getElementById('ingestResult');
+		if (!content) { out.textContent = 'Content is required.'; return; }
+
+		out.textContent = 'Ingesting (embedding happens now, via Ollama)…';
+		try {
+			const res = await fetch(`/api/projects/${projectId}/documents/text`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ title: title || 'untitled', content })
+			});
+			const body = await res.json();
+			if (!res.ok) {
+				out.innerHTML = `<span class="error-text">${res.status}: ${JSON.stringify(body)}</span>`;
+				return;
+			}
+			out.textContent = body.deduplicated
+				? 'Already had this exact content — reused the existing document (no re-embedding).'
+				: 'Ingested. Refreshing document list…';
+			document.getElementById('textTitle').value = '';
+			document.getElementById('textContent').value = '';
+			await refreshDocs();
+		} catch (e) {
+			out.innerHTML = `<span class="error-text">Request failed: ${e}</span>`;
+		}
+	});
+
+	// --- Ingest file ---
+	document.getElementById('ingestFileBtn').addEventListener('click', async () => {
+		const fileInput = document.getElementById('fileInput');
+		const out = document.getElementById('ingestResult');
+		if (!fileInput.files.length) { out.textContent = 'Choose a file first.'; return; }
+
+		const formData = new FormData();
+		formData.append('file', fileInput.files[0]);
+
+		out.textContent = 'Uploading and extracting text…';
+		try {
+			const res = await fetch(`/api/projects/${projectId}/documents`, { method: 'POST', body: formData });
+			const body = await res.json();
+			if (!res.ok) {
+				out.innerHTML = `<span class="error-text">${res.status}: ${JSON.stringify(body)}</span>`;
+				return;
+			}
+			out.textContent = body.deduplicated ? 'Already had this content — reused existing document.' : 'Ingested. Refreshing…';
+			fileInput.value = '';
+			await refreshDocs();
+		} catch (e) {
+			out.innerHTML = `<span class="error-text">Request failed: ${e}</span>`;
+		}
+	});
+
+	// --- Document list + index status ---
+	async function refreshDocs() {
+		const list = document.getElementById('docList');
+		const docs = await fetch(`/api/projects/${projectId}/documents`).then(r => r.json());
+		if (docs.length === 0) {
+			list.innerHTML = '<p class="muted">No documents yet.</p>';
+			return;
+		}
+		list.innerHTML = '';
+		for (const doc of docs) {
+			const status = await fetch(`/api/projects/${projectId}/documents/${doc.id}/index-status`).then(r => r.json());
+			const row = document.createElement('div');
+			row.className = 'doc-row';
+			row.innerHTML = `
+				<div>
+					<span class="title">${escapeHtml(doc.title)}</span>
+					<span class="meta">${doc.sourceType} &middot; ${status.chunkCount ?? 0} chunk(s)</span>
+					${status.reason ? `<span class="meta error-text">${escapeHtml(status.reason)}</span>` : ''}
+				</div>
+				<div class="doc-actions">
+					<span class="badge ${status.status}">${status.status}</span>
+					<button class="secondary" data-summarize="${doc.id}">Summarize</button>
+				</div>`;
+			list.appendChild(row);
+		}
+		list.querySelectorAll('[data-summarize]').forEach(btn => {
+			btn.addEventListener('click', () => summarize(btn.dataset.summarize));
+		});
+	}
+	document.getElementById('refreshDocsBtn').addEventListener('click', refreshDocs);
+
+	async function summarize(documentId) {
+		const box = document.getElementById('answerBox');
+		box.innerHTML = '<p class="muted"><span class="spinner"></span>Summarizing (calls Gemini)…</p>';
+		try {
+			const res = await fetch(`/api/projects/${projectId}/documents/${documentId}/summarize`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({})
+			});
+			const body = await res.json();
+			if (!res.ok) {
+				box.innerHTML = `<p class="error-text">${res.status}: ${escapeHtml(body.message || JSON.stringify(body))}</p>`;
+				return;
+			}
+			box.innerHTML = `
+				<h2 style="margin-top:0;">Summary of "${escapeHtml(body.title)}"</h2>
+				<div class="answer-text">${escapeHtml(body.summary)}</div>
+				<p class="muted" style="margin-top:8px;">
+					${body.charactersUsed} characters used ${body.truncated ? '(truncated — document was longer)' : ''}
+					&middot; ${body.latencyMs}ms
+				</p>`;
+		} catch (e) {
+			box.innerHTML = `<p class="error-text">Request failed: ${e}</p>`;
+		}
+	}
+
+	// --- Ask a question ---
+	document.getElementById('askBtn').addEventListener('click', async () => {
+		const question = document.getElementById('questionInput').value.trim();
+		const box = document.getElementById('answerBox');
+		if (!question) return;
+
+		box.innerHTML = '<p class="muted"><span class="spinner"></span>Retrieving relevant chunks, then asking Gemini…</p>';
+		try {
+			const res = await fetch(`/api/projects/${projectId}/query`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ question })
+			});
+			const body = await res.json();
+
+			if (!res.ok) {
+				// A 503 here means the AI provider (Gemini) itself failed —
+				// most likely the API key. Surfaced verbatim so it's obvious
+				// which layer broke, rather than a generic "request failed".
+				box.innerHTML = `<p class="error-text"><strong>${res.status}:</strong> ${escapeHtml(body.message || JSON.stringify(body))}</p>`;
+				return;
+			}
+
+			let sourcesHtml = '';
+			for (const s of body.sources) {
+				sourcesHtml += `
+					<div class="source ${s.cited ? 'cited' : ''}">
+						<div class="src-head">
+							<span>${escapeHtml(s.title)} &middot; chunk ${s.chunkIndex}</span>
+							<span>${s.cited ? 'cited ✓' : 'retrieved, not cited'} &middot; similarity ${s.similarity.toFixed(3)}</span>
+						</div>
+						<div class="excerpt">${escapeHtml(s.excerpt)}</div>
+					</div>`;
+			}
+
+			box.innerHTML = `
+				<div class="status-line">
+					<span class="badge ${body.status}">${body.status}</span>
+					<span class="muted">${body.latencyMs}ms</span>
+				</div>
+				<div class="answer-text">${escapeHtml(body.answer)}</div>
+				${sourcesHtml ? `<h2 style="margin:16px 0 0;">Sources retrieved</h2>${sourcesHtml}` : ''}
+			`;
+		} catch (e) {
+			box.innerHTML = `<p class="error-text">Request failed: ${e}</p>`;
+		}
+	});
+
+	function escapeHtml(str) {
+		const div = document.createElement('div');
+		div.textContent = str ?? '';
+		return div.innerHTML;
+	}
+
+	init();
+</script>
+
+</body>
+</html>
