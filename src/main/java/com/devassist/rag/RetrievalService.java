@@ -2,6 +2,8 @@ package com.devassist.rag;
 
 import java.util.List;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -22,10 +24,12 @@ public class RetrievalService {
 
 	private final VectorStore vectorStore;
 	private final RagProperties properties;
+	private final MeterRegistry meterRegistry;
 
-	public RetrievalService(VectorStore vectorStore, RagProperties properties) {
+	public RetrievalService(VectorStore vectorStore, RagProperties properties, MeterRegistry meterRegistry) {
 		this.vectorStore = vectorStore;
 		this.properties = properties;
+		this.meterRegistry = meterRegistry;
 	}
 
 	public List<Document> retrieve(String projectId, String question, List<String> documentIds) {
@@ -36,7 +40,9 @@ public class RetrievalService {
 				.filterExpression(buildFilter(projectId, documentIds))
 				.build();
 
+		Timer.Sample sample = Timer.start(meterRegistry);
 		List<Document> results = vectorStore.similaritySearch(request);
+		sample.stop(meterRegistry.timer("rag.retrieval.duration"));
 		return (results != null) ? results : List.of();
 	}
 

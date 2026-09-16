@@ -2,6 +2,9 @@ package com.devassist.rag;
 
 import java.util.List;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -18,13 +21,16 @@ import static org.mockito.Mockito.when;
 class RetrievalServiceTest {
 
 	private VectorStore vectorStore;
+	private MeterRegistry meterRegistry;
 	private RetrievalService service;
 
 	@BeforeEach
 	void setUp() {
 		vectorStore = mock(VectorStore.class);
 		when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of());
-		service = new RetrievalService(vectorStore, new RagProperties(5, 0.5, 2000, 200, 0.1, 300, 200000));
+		meterRegistry = new SimpleMeterRegistry();
+		service = new RetrievalService(vectorStore, new RagProperties(5, 0.5, 2000, 200, 0.1, 300, 200000),
+				meterRegistry);
 	}
 
 	@Test
@@ -71,7 +77,7 @@ class RetrievalServiceTest {
 		// implementation matching the first test's numbers by coincidence
 		// would fail here.
 		RetrievalService otherService = new RetrievalService(vectorStore,
-				new RagProperties(3, 0.9, 2000, 200, 0.1, 300, 200000));
+				new RagProperties(3, 0.9, 2000, 200, 0.1, 300, 200000), meterRegistry);
 
 		otherService.retrieve("proj-1", "any question", List.of());
 
@@ -122,5 +128,14 @@ class RetrievalServiceTest {
 		String filter = captor.getValue().getFilterExpression().toString();
 		assertThat(filter).contains("proj-1");
 		assertThat(filter).doesNotContain("documentId");
+	}
+
+	@Test
+	void recordsARetrievalDurationTimer() {
+		service.retrieve("proj-1", "any question", List.of());
+
+		Timer timer = meterRegistry.find("rag.retrieval.duration").timer();
+		assertThat(timer).isNotNull();
+		assertThat(timer.count()).isEqualTo(1);
 	}
 }
