@@ -1,7 +1,8 @@
 package com.devassist.rag;
 
+import java.util.Arrays;
+
 import com.google.genai.errors.ApiException;
-import com.google.genai.errors.ClientException;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.http.HttpStatus;
@@ -19,6 +20,15 @@ import com.openai.errors.OpenAIException;
 @RestControllerAdvice(assignableTypes = { IndexStatusController.class, RagQueryController.class,
 		SummarizationController.class })
 public class RagExceptionHandler {
+
+	// Kept in sync by hand with handleAiFailure's @ExceptionHandler list below -
+	// Java annotation attributes require compile-time class literals, so this
+	// array can't be referenced from the annotation directly. Adding a new
+	// provider exception type to one of these two lists without the other
+	// silently reintroduces the bug hasAiFailureCause exists to prevent (see
+	// its own comment).
+	private static final Class<?>[] AI_FAILURE_TYPES = { NonTransientAiException.class, BeanCreationException.class,
+			ApiException.class, OpenAIException.class };
 
 	@ExceptionHandler({ ProjectNotFoundException.class, DocumentNotFoundException.class })
 	@ResponseStatus(HttpStatus.NOT_FOUND)
@@ -43,14 +53,16 @@ public class RagExceptionHandler {
 	// model name, quota, auth) - Spring AI does not normalise this into
 	// NonTransientAiException, and it arrives wrapped in a generic RuntimeException,
 	// which @ExceptionHandler still matches because Spring searches the whole
-	// cause chain, not just the directly-thrown type. ClientException is the
-	// newer Google SDK exception type. OpenAIException
-	// (com.openai.errors) is the equivalent root for every failure the OpenAI
-	// SDK itself can throw - missing/invalid key, quota, bad request, server
-	// errors, network I/O - all of its subtypes extend this one class, covering
-	// OpenAI once a user switches the active provider to it via ChatProviderService.
+	// cause chain, not just the directly-thrown type (this also covers
+	// ClientException, a subtype of ApiException, without needing its own entry).
+	// OpenAIException (com.openai.errors) is the equivalent root for every
+	// failure the OpenAI SDK itself can throw - missing/invalid key, quota, bad
+	// request, server errors, network I/O - all of its subtypes extend this one
+	// class, covering OpenAI once a user switches the active provider to it via
+	// ChatProviderService. This list is mirrored in AI_FAILURE_TYPES above -
+	// keep both in sync.
 	@ExceptionHandler({ NonTransientAiException.class, BeanCreationException.class, ApiException.class,
-			ClientException.class, OpenAIException.class })
+			OpenAIException.class })
 	@ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
 	public ErrorResponse handleAiFailure(RuntimeException ex) {
 		return ErrorResponse.of(HttpStatus.SERVICE_UNAVAILABLE, "AI provider unavailable: " + deepestMessage(ex));
@@ -72,12 +84,14 @@ public class RagExceptionHandler {
 	// type match (Exception matches every Throwable) over ever falling back to
 	// searching the cause chain, so without this check a wrapped ApiException/
 	// OpenAIException/etc. would be misreported as a generic 500 instead of the
-	// existing, more specific 503.
+	// existing, more specific 503. AI_FAILURE_TYPES above is the single list
+	// this checks against - kept in sync by hand with handleAiFailure's
+	// @ExceptionHandler list, since annotations can't reference it directly.
 	private boolean hasAiFailureCause(Throwable ex) {
 		Throwable current = ex;
 		while (current != null) {
-			if (current instanceof NonTransientAiException || current instanceof BeanCreationException
-					|| current instanceof ApiException || current instanceof OpenAIException) {
+			final Throwable toCheck = current;
+			if (Arrays.stream(AI_FAILURE_TYPES).anyMatch(type -> type.isInstance(toCheck))) {
 				return true;
 			}
 			Throwable cause = current.getCause();
