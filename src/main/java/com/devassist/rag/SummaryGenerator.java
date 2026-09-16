@@ -1,6 +1,10 @@
 package com.devassist.rag;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.stereotype.Service;
 
@@ -21,10 +25,13 @@ public class SummaryGenerator {
 	// build it at startup.
 	private final ChatProviderService chatProviderService;
 	private final RagProperties properties;
+	private final MeterRegistry meterRegistry;
 
-	public SummaryGenerator(ChatProviderService chatProviderService, RagProperties properties) {
+	public SummaryGenerator(ChatProviderService chatProviderService, RagProperties properties,
+			MeterRegistry meterRegistry) {
 		this.chatProviderService = chatProviderService;
 		this.properties = properties;
+		this.meterRegistry = meterRegistry;
 	}
 
 	public String summarize(String text, String instruction) {
@@ -37,9 +44,21 @@ public class SummaryGenerator {
 				.defaultSystem(SYSTEM_PROMPT)
 				.defaultOptions(ChatOptions.builder().temperature(properties.temperature()))
 				.build();
-		return chatClient.prompt()
+
+		String provider = chatProviderService.get().name().toLowerCase();
+		Timer.Sample sample = Timer.start(meterRegistry);
+		ChatResponse response = chatClient.prompt()
 				.user("%s\n\nDocument:\n%s".formatted(steer, text))
 				.call()
-				.content();
+				.chatResponse();
+		sample.stop(meterRegistry.timer("rag.summarization.duration", "provider", provider));
+
+		Usage usage = response.getMetadata().getUsage();
+		meterRegistry.counter("rag.summarization.tokens", "provider", provider, "type", "prompt")
+				.increment(usage.getPromptTokens());
+		meterRegistry.counter("rag.summarization.tokens", "provider", provider, "type", "completion")
+				.increment(usage.getCompletionTokens());
+
+		return response.getResult().getOutput().getText();
 	}
 }

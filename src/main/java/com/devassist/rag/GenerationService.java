@@ -1,6 +1,10 @@
 package com.devassist.rag;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.stereotype.Service;
 
@@ -29,10 +33,13 @@ public class GenerationService {
 	// either concrete ChatModel would force Spring to build it at startup.
 	private final ChatProviderService chatProviderService;
 	private final RagProperties properties;
+	private final MeterRegistry meterRegistry;
 
-	public GenerationService(ChatProviderService chatProviderService, RagProperties properties) {
+	public GenerationService(ChatProviderService chatProviderService, RagProperties properties,
+			MeterRegistry meterRegistry) {
 		this.chatProviderService = chatProviderService;
 		this.properties = properties;
+		this.meterRegistry = meterRegistry;
 	}
 
 	public String generate(String context, String question) {
@@ -42,9 +49,21 @@ public class GenerationService {
 				.defaultSystem(SYSTEM_PROMPT)
 				.defaultOptions(ChatOptions.builder().temperature(properties.temperature()))
 				.build();
-		return chatClient.prompt()
+
+		String provider = chatProviderService.get().name().toLowerCase();
+		Timer.Sample sample = Timer.start(meterRegistry);
+		ChatResponse response = chatClient.prompt()
 				.user("Context:\n%s\n\nQuestion: %s".formatted(context, question))
 				.call()
-				.content();
+				.chatResponse();
+		sample.stop(meterRegistry.timer("rag.generation.duration", "provider", provider));
+
+		Usage usage = response.getMetadata().getUsage();
+		meterRegistry.counter("rag.generation.tokens", "provider", provider, "type", "prompt")
+				.increment(usage.getPromptTokens());
+		meterRegistry.counter("rag.generation.tokens", "provider", provider, "type", "completion")
+				.increment(usage.getCompletionTokens());
+
+		return response.getResult().getOutput().getText();
 	}
 }

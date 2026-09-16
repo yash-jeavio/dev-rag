@@ -2,10 +2,16 @@ package com.devassist.rag;
 
 import java.util.List;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
@@ -13,6 +19,7 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -30,9 +37,10 @@ class GenerationServiceTest {
 
 		ChatProviderService chatProviderService = mock(ChatProviderService.class);
 		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
+		when(chatProviderService.get()).thenReturn(ChatProvider.GEMINI);
 
 		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.1, 300, 200000);
-		GenerationService service = new GenerationService(chatProviderService, properties);
+		GenerationService service = new GenerationService(chatProviderService, properties, new SimpleMeterRegistry());
 		String answer = service.generate("[1] refund text", "refund window?");
 
 		assertThat(answer).isEqualTo("Within 30 days. [1]");
@@ -68,11 +76,49 @@ class GenerationServiceTest {
 
 		ChatProviderService chatProviderService = mock(ChatProviderService.class);
 		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
+		when(chatProviderService.get()).thenReturn(ChatProvider.GEMINI);
 
 		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.42, 300, 200000);
-		GenerationService service = new GenerationService(chatProviderService, properties);
+		GenerationService service = new GenerationService(chatProviderService, properties, new SimpleMeterRegistry());
 		service.generate("context", "question");
 
 		assertThat(promptCaptor.getValue().getOptions().getTemperature()).isEqualTo(0.42);
+	}
+
+	@Test
+	void recordsGenerationDurationAndTokenUsageTaggedByProvider() {
+		ChatModel chatModel = mock(ChatModel.class);
+		when(chatModel.getOptions()).thenReturn(ChatOptions.builder().build());
+		when(chatModel.call(any(Prompt.class))).thenReturn(new ChatResponse(
+				List.of(new Generation(new AssistantMessage("answer"))),
+				ChatResponseMetadata.builder().usage(new DefaultUsage(42, 17)).build()));
+
+		ChatProviderService chatProviderService = mock(ChatProviderService.class);
+		when(chatProviderService.activeChatClientBuilder()).thenReturn(ChatClient.builder(chatModel));
+		when(chatProviderService.get()).thenReturn(ChatProvider.GEMINI);
+
+		MeterRegistry meterRegistry = new SimpleMeterRegistry();
+		RagProperties properties = new RagProperties(5, 0.5, 2000, 200, 0.1, 300, 200000);
+		GenerationService service = new GenerationService(chatProviderService, properties, meterRegistry);
+
+		service.generate("context", "question");
+
+		Timer timer = meterRegistry.find("rag.generation.duration").tag("provider", "gemini").timer();
+		assertThat(timer).isNotNull();
+		assertThat(timer.count()).isEqualTo(1);
+
+		Counter promptTokens = meterRegistry.find("rag.generation.tokens")
+				.tag("provider", "gemini")
+				.tag("type", "prompt")
+				.counter();
+		assertThat(promptTokens).isNotNull();
+		assertThat(promptTokens.count()).isEqualTo(42);
+
+		Counter completionTokens = meterRegistry.find("rag.generation.tokens")
+				.tag("provider", "gemini")
+				.tag("type", "completion")
+				.counter();
+		assertThat(completionTokens).isNotNull();
+		assertThat(completionTokens.count()).isEqualTo(17);
 	}
 }
