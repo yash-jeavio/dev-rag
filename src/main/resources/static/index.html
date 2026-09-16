@@ -315,6 +315,7 @@
 			row.className = 'doc-row';
 			row.innerHTML = `
 				<div>
+					<input type="checkbox" class="doc-select" value="${doc.id}" style="margin-right:8px;">
 					<span class="title">${escapeHtml(doc.title)}</span>
 					<span class="meta">${doc.sourceType} &middot; ${status.chunkCount ?? 0} chunk(s)</span>
 					${status.reason ? `<span class="meta error-text">${escapeHtml(status.reason)}</span>` : ''}
@@ -363,12 +364,14 @@
 		const box = document.getElementById('answerBox');
 		if (!question) return;
 
+		const documentIds = Array.from(document.querySelectorAll('.doc-select:checked')).map(cb => cb.value);
+
 		box.innerHTML = '<p class="muted"><span class="spinner"></span>Retrieving relevant chunks, then asking Gemini…</p>';
 		try {
 			const res = await fetch(`/api/projects/${projectId}/query`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ question })
+				body: JSON.stringify({ question, documentIds })
 			});
 			const body = await res.json();
 
