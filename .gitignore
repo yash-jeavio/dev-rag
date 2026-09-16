@@ -36,3 +36,5 @@ build/
 .claude/worktrees
 .claude/mcp-servers/*/node_modules
 .claude/settings.local.json
+
+.env

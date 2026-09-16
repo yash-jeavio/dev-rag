@@ -1,0 +1,8 @@
+target/
+.git/
+.idea/
+.claude/
+docs/
+specs/
+http/
+*.md
