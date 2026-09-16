@@ -3,6 +3,7 @@ package com.devassist.rag;
 import java.util.List;
 import java.util.Map;
 
+import com.google.genai.errors.ApiException;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.http.HttpStatus;
@@ -41,15 +42,33 @@ public class RagExceptionHandler {
 	// built in the first place (e.g. GEMINI_API_KEY missing) - GenerationService
 	// and SummaryGenerator resolve it lazily via ObjectProvider, so that failure
 	// now surfaces here at call time instead of at application startup.
-	// OpenAIException (com.openai.errors) is the root of every failure the
-	// OpenAI SDK itself can throw - missing/invalid key, quota, bad request,
-	// server errors, network I/O - all of its subtypes extend this one class.
-	// This covers OpenAI once a user switches the active provider to it via
-	// ChatProviderService.
-	@ExceptionHandler({ NonTransientAiException.class, BeanCreationException.class, OpenAIException.class })
+	// ApiException covers Google's own SDK rejecting a request (bad/retired
+	// model name, quota, auth) - Spring AI does not normalise this into
+	// NonTransientAiException, and it arrives wrapped in a generic RuntimeException,
+	// which @ExceptionHandler still matches because Spring searches the whole
+	// cause chain, not just the directly-thrown type. OpenAIException
+	// (com.openai.errors) is the equivalent root for every failure the OpenAI
+	// SDK itself can throw - missing/invalid key, quota, bad request, server
+	// errors, network I/O - all of its subtypes extend this one class, covering
+	// OpenAI once a user switches the active provider to it via ChatProviderService.
+	@ExceptionHandler({ NonTransientAiException.class, BeanCreationException.class, ApiException.class,
+			OpenAIException.class })
 	@ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
 	public Map<String, Object> handleAiFailure(RuntimeException ex) {
 		return Map.of("status", HttpStatus.SERVICE_UNAVAILABLE.value(),
-				"message", "AI provider unavailable: " + ex.getMessage());
+				"message", "AI provider unavailable: " + deepestMessage(ex));
+	}
+
+	// Spring passes the exception instance that was actually thrown, which may
+	// be a generic wrapper rather than the specific cause that matched this
+	// handler - walk to the root cause so the caller sees Google's actual
+	// explanation (e.g. "model no longer available") instead of a generic
+	// wrapper message like "Failed to generate content".
+	private String deepestMessage(Throwable ex) {
+		Throwable current = ex;
+		while (current.getCause() != null && current.getCause() != current) {
+			current = current.getCause();
+		}
+		return current.getMessage();
 	}
 }
