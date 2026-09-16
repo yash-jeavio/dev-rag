@@ -1,9 +1,7 @@
 package com.devassist.rag;
 
-import java.util.List;
-import java.util.Map;
-
 import com.google.genai.errors.ApiException;
+import com.google.genai.errors.ClientException;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.http.HttpStatus;
@@ -12,6 +10,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.devassist.common.ErrorResponse;
 import com.devassist.document.DocumentNotFoundException;
 import com.devassist.project.ProjectNotFoundException;
 import com.openai.errors.OpenAIException;
@@ -22,17 +21,14 @@ public class RagExceptionHandler {
 
 	@ExceptionHandler({ ProjectNotFoundException.class, DocumentNotFoundException.class })
 	@ResponseStatus(HttpStatus.NOT_FOUND)
-	public Map<String, Object> handleNotFound(RuntimeException ex) {
-		return Map.of("status", HttpStatus.NOT_FOUND.value(), "message", ex.getMessage());
+	public ErrorResponse handleNotFound(RuntimeException ex) {
+		return ErrorResponse.of(HttpStatus.NOT_FOUND, ex.getMessage());
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	@ResponseStatus(HttpStatus.BAD_REQUEST)
-	public Map<String, Object> handleValidation(MethodArgumentNotValidException ex) {
-		List<Map<String, String>> errors = ex.getBindingResult().getFieldErrors().stream()
-				.map(fieldError -> Map.of("field", fieldError.getField(), "message", fieldError.getDefaultMessage()))
-				.toList();
-		return Map.of("status", HttpStatus.BAD_REQUEST.value(), "errors", errors);
+	public ErrorResponse handleValidation(MethodArgumentNotValidException ex) {
+		return ErrorResponse.validationFailure(ex);
 	}
 
 	// A model or embedding provider being unreachable is not the caller's fault
@@ -46,17 +42,23 @@ public class RagExceptionHandler {
 	// model name, quota, auth) - Spring AI does not normalise this into
 	// NonTransientAiException, and it arrives wrapped in a generic RuntimeException,
 	// which @ExceptionHandler still matches because Spring searches the whole
-	// cause chain, not just the directly-thrown type. OpenAIException
+	// cause chain, not just the directly-thrown type. ClientException is the
+	// newer Google SDK exception type. OpenAIException
 	// (com.openai.errors) is the equivalent root for every failure the OpenAI
 	// SDK itself can throw - missing/invalid key, quota, bad request, server
 	// errors, network I/O - all of its subtypes extend this one class, covering
 	// OpenAI once a user switches the active provider to it via ChatProviderService.
 	@ExceptionHandler({ NonTransientAiException.class, BeanCreationException.class, ApiException.class,
-			OpenAIException.class })
+			ClientException.class, OpenAIException.class })
 	@ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
-	public Map<String, Object> handleAiFailure(RuntimeException ex) {
-		return Map.of("status", HttpStatus.SERVICE_UNAVAILABLE.value(),
-				"message", "AI provider unavailable: " + deepestMessage(ex));
+	public ErrorResponse handleAiFailure(RuntimeException ex) {
+		return ErrorResponse.of(HttpStatus.SERVICE_UNAVAILABLE, "AI provider unavailable: " + deepestMessage(ex));
+	}
+
+	@ExceptionHandler(Exception.class)
+	@ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+	public ErrorResponse handleUnexpected(Exception ex) {
+		return ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
 	}
 
 	// Spring passes the exception instance that was actually thrown, which may
