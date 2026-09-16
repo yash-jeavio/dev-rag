@@ -10,6 +10,7 @@ import org.springframework.ai.document.Document;
 import com.devassist.project.ProjectService;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -34,7 +35,7 @@ class RagQueryServiceTest {
 
 	@Test
 	void neverCallsTheModelWhenNothingIsRetrieved() {
-		when(retrievalService.retrieve(anyString(), anyString())).thenReturn(List.of());
+		when(retrievalService.retrieve(anyString(), anyString(), any())).thenReturn(List.of());
 
 		RagAnswerResponse response = service.answer("proj-1", "unanswerable question");
 
@@ -45,7 +46,7 @@ class RagQueryServiceTest {
 
 	@Test
 	void returnsAnsweredWithSourcesWhenChunksAreRetrieved() {
-		when(retrievalService.retrieve(anyString(), anyString())).thenReturn(List.of(
+		when(retrievalService.retrieve(anyString(), anyString(), any())).thenReturn(List.of(
 				new Document("refund text", Map.of("projectId", "proj-1", "documentId", "doc-1",
 						"title", "policy.pdf", "sourceType", "PDF", "chunkIndex", 0))));
 		when(generationService.generate(anyString(), anyString())).thenReturn("Within 30 days. [1]");

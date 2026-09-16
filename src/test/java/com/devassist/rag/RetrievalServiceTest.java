@@ -28,7 +28,7 @@ class RetrievalServiceTest {
 
 	@Test
 	void alwaysFiltersByProjectId() {
-		service.retrieve("proj-1", "any question");
+		service.retrieve("proj-1", "any question", List.of());
 
 		ArgumentCaptor<SearchRequest> captor = ArgumentCaptor.forClass(SearchRequest.class);
 		verify(vectorStore).similaritySearch(captor.capture());
@@ -38,7 +38,7 @@ class RetrievalServiceTest {
 
 	@Test
 	void appliesConfiguredTopKAndThreshold() {
-		service.retrieve("proj-1", "any question");
+		service.retrieve("proj-1", "any question", List.of());
 
 		ArgumentCaptor<SearchRequest> captor = ArgumentCaptor.forClass(SearchRequest.class);
 		verify(vectorStore).similaritySearch(captor.capture());
@@ -50,14 +50,14 @@ class RetrievalServiceTest {
 	void returnsEmptyListWhenStoreReturnsNull() {
 		when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(null);
 
-		assertThat(service.retrieve("proj-1", "q")).isEmpty();
+		assertThat(service.retrieve("proj-1", "q", List.of())).isEmpty();
 	}
 
 	@Test
 	void filterIsScopedToTheProjectIdMetadataKeyNotSomeOtherKey() {
 		// Guards against a filter built on the wrong metadata key (e.g.
 		// "documentId") that would still happen to contain the projectId value.
-		service.retrieve("proj-1", "any question");
+		service.retrieve("proj-1", "any question", List.of());
 
 		ArgumentCaptor<SearchRequest> captor = ArgumentCaptor.forClass(SearchRequest.class);
 		verify(vectorStore).similaritySearch(captor.capture());
@@ -72,7 +72,7 @@ class RetrievalServiceTest {
 		RetrievalService otherService = new RetrievalService(vectorStore,
 				new RagProperties(3, 0.9, 2000, 200, 0.1, 300, 200000));
 
-		otherService.retrieve("proj-1", "any question");
+		otherService.retrieve("proj-1", "any question", List.of());
 
 		ArgumentCaptor<SearchRequest> captor = ArgumentCaptor.forClass(SearchRequest.class);
 		verify(vectorStore).similaritySearch(captor.capture());
@@ -82,10 +82,35 @@ class RetrievalServiceTest {
 
 	@Test
 	void queryTextIsPassedThroughToTheRequest() {
-		service.retrieve("proj-1", "what is the deployment process?");
+		service.retrieve("proj-1", "what is the deployment process?", List.of());
 
 		ArgumentCaptor<SearchRequest> captor = ArgumentCaptor.forClass(SearchRequest.class);
 		verify(vectorStore).similaritySearch(captor.capture());
 		assertThat(captor.getValue().getQuery()).isEqualTo("what is the deployment process?");
+	}
+
+	@Test
+	void narrowsToTheGivenDocumentsWhenDocumentIdsIsNonEmpty() {
+		service.retrieve("proj-1", "any question", List.of("doc-1", "doc-2"));
+
+		ArgumentCaptor<SearchRequest> captor = ArgumentCaptor.forClass(SearchRequest.class);
+		verify(vectorStore).similaritySearch(captor.capture());
+		String filter = captor.getValue().getFilterExpression().toString();
+		assertThat(filter).contains("proj-1");
+		assertThat(filter).contains("doc-1");
+		assertThat(filter).contains("doc-2");
+	}
+
+	@Test
+	void anEmptyDocumentIdsListProducesExactlyTheSameFilterAsBefore() {
+		// Guards against the compound-filter code path accidentally
+		// changing the whole-project case's filter shape too.
+		service.retrieve("proj-1", "any question", List.of());
+
+		ArgumentCaptor<SearchRequest> captor = ArgumentCaptor.forClass(SearchRequest.class);
+		verify(vectorStore).similaritySearch(captor.capture());
+		String filter = captor.getValue().getFilterExpression().toString();
+		assertThat(filter).contains("proj-1");
+		assertThat(filter).doesNotContain("documentId");
 	}
 }

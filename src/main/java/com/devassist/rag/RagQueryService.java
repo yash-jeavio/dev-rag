@@ -32,7 +32,7 @@ public class RagQueryService {
 		long startedAt = System.currentTimeMillis();
 		projectService.findById(projectId);
 
-		List<Document> chunks = retrievalService.retrieve(projectId, question);
+		List<Document> chunks = retrievalService.retrieve(projectId, question, List.of());
 		if (chunks.isEmpty()) {
 			// BR-08: no model call at all — nothing retrieved means nothing to ground on.
 			return RagAnswerResponse.of(question, NO_CONTEXT_ANSWER,
