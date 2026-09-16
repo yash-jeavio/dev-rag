@@ -12,6 +12,6 @@ public record RagQueryRequest(@NotBlank @Size(max = 1000) String question, List<
 	// check isEmpty(), never null, for "search the whole project" (BR-01,
 	// specs/document-scoped-retrieval.md).
 	public RagQueryRequest {
-		documentIds = documentIds == null ? List.of() : documentIds;
+		documentIds = documentIds == null ? List.of() : List.copyOf(documentIds);
 	}
 }

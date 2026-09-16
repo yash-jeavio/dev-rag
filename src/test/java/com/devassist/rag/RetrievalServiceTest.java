@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.ai.vectorstore.filter.Filter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -95,10 +96,19 @@ class RetrievalServiceTest {
 
 		ArgumentCaptor<SearchRequest> captor = ArgumentCaptor.forClass(SearchRequest.class);
 		verify(vectorStore).similaritySearch(captor.capture());
-		String filter = captor.getValue().getFilterExpression().toString();
-		assertThat(filter).contains("proj-1");
-		assertThat(filter).contains("doc-1");
-		assertThat(filter).contains("doc-2");
+		Filter.Expression expression = captor.getValue().getFilterExpression();
+
+		assertThat(expression.type()).isEqualTo(Filter.ExpressionType.AND);
+
+		Filter.Expression projectClause = (Filter.Expression) expression.left();
+		assertThat(projectClause.type()).isEqualTo(Filter.ExpressionType.EQ);
+		assertThat(((Filter.Key) projectClause.left()).key()).isEqualTo("projectId");
+		assertThat(((Filter.Value) projectClause.right()).value()).isEqualTo("proj-1");
+
+		Filter.Expression documentClause = (Filter.Expression) expression.right();
+		assertThat(documentClause.type()).isEqualTo(Filter.ExpressionType.IN);
+		assertThat(((Filter.Key) documentClause.left()).key()).isEqualTo("documentId");
+		assertThat(((Filter.Value) documentClause.right()).value()).isEqualTo(List.of("doc-1", "doc-2"));
 	}
 
 	@Test
