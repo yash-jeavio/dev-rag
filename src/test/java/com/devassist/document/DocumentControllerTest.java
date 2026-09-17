@@ -220,6 +220,47 @@ class DocumentControllerTest {
 	}
 
 	@Test
+	void renameReturnsOkWithUpdatedTitle() throws Exception {
+		Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
+		Document renamed = new Document("doc-1", "project-1", "New Title", SourceType.TEXT, "Body text", "hash-1",
+				createdAt);
+		given(documentService.rename(eq("project-1"), eq("doc-1"), eq("New Title"))).willReturn(renamed);
+
+		mockMvc.perform(put("/api/projects/{projectId}/documents/{documentId}/title", "project-1", "doc-1")
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{
+							"title": "New Title"
+						}
+						"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.title").value("New Title"));
+	}
+
+	@Test
+	void renameReturnsBadRequestWhenTitleIsMissing() throws Exception {
+		mockMvc.perform(put("/api/projects/{projectId}/documents/{documentId}/title", "project-1", "doc-1")
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{}
+						"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errors[0].field").value("title"));
+	}
+
+	@Test
+	void renameReturnsNotFoundWhenDocumentDoesNotExist() throws Exception {
+		given(documentService.rename(eq("project-1"), eq("missing"), any()))
+				.willThrow(new DocumentNotFoundException("missing"));
+
+		mockMvc.perform(put("/api/projects/{projectId}/documents/{documentId}/title", "project-1", "missing")
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{
+							"title": "New Title"
+						}
+						"""))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
 	void deleteReturnsNoContent() throws Exception {
 		mockMvc.perform(delete("/api/projects/{projectId}/documents/{documentId}", "project-1", "doc-1"))
 				.andExpect(status().isNoContent());

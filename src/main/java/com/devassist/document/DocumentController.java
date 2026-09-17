@@ -81,6 +81,13 @@ public class DocumentController {
 		return ResponseEntity.ok(DocumentResponse.from(document));
 	}
 
+	@PutMapping(path = "/{documentId}/title", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<DocumentResponse> rename(@PathVariable String projectId, @PathVariable String documentId,
+			@Valid @RequestBody RenameDocumentRequest request) {
+		Document document = documentService.rename(projectId, documentId, request.title());
+		return ResponseEntity.ok(DocumentResponse.from(document));
+	}
+
 	@DeleteMapping("/{documentId}")
 	public ResponseEntity<Void> delete(@PathVariable String projectId, @PathVariable String documentId) {
 		documentService.delete(projectId, documentId);

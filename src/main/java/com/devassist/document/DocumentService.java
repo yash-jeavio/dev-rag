@@ -99,6 +99,15 @@ public class DocumentService {
 		return updated;
 	}
 
+	public Document rename(String projectId, String documentId, String newTitle) {
+		Document existing = findById(projectId, documentId);
+		Document updated = new Document(existing.id(), existing.projectId(), newTitle, existing.sourceType(),
+				existing.content(), existing.contentHash(), existing.createdAt());
+		documents.put(updated.id(), updated);
+		eventPublisher.publishEvent(new DocumentUpdatedEvent(updated));
+		return updated;
+	}
+
 	public List<Document> findByProject(String projectId) {
 		projectService.findById(projectId);
 		return documents.values().stream()

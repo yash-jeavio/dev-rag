@@ -204,6 +204,50 @@ class DocumentServiceTest {
 	}
 
 	@Test
+	void renameChangesOnlyTitle() {
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Original", "Body"))
+				.document();
+
+		Document renamed = documentService.rename(existingProjectId, created.id(), "New Title");
+
+		assertThat(renamed.id()).isEqualTo(created.id());
+		assertThat(renamed.projectId()).isEqualTo(created.projectId());
+		assertThat(renamed.title()).isEqualTo("New Title");
+		assertThat(renamed.sourceType()).isEqualTo(created.sourceType());
+		assertThat(renamed.content()).isEqualTo(created.content());
+		assertThat(renamed.contentHash()).isEqualTo(created.contentHash());
+		assertThat(renamed.createdAt()).isEqualTo(created.createdAt());
+	}
+
+	@Test
+	void renameThrowsWhenDocumentDoesNotExist() {
+		assertThatThrownBy(() -> documentService.rename(existingProjectId, "unknown-id", "New Title"))
+				.isInstanceOf(DocumentNotFoundException.class);
+	}
+
+	@Test
+	void renameThrowsWhenDocumentBelongsToDifferentProject() {
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Original", "Body"))
+				.document();
+		Project otherProject = projectService
+				.create(new CreateProjectRequest("Other", null, "Java", "https://github.com/example/other"));
+
+		assertThatThrownBy(() -> documentService.rename(otherProject.id(), created.id(), "New Title"))
+				.isInstanceOf(DocumentNotFoundException.class);
+	}
+
+	@Test
+	void publishesUpdatedEventOnRename() {
+		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Original", "Body"))
+				.document();
+		clearInvocations(eventPublisher);
+
+		Document renamed = documentService.rename(existingProjectId, created.id(), "New Title");
+
+		verify(eventPublisher).publishEvent(new DocumentUpdatedEvent(renamed));
+	}
+
+	@Test
 	void deleteRemovesDocument() {
 		Document created = documentService.ingestText(existingProjectId, new IngestTextRequest("Title", "Body"))
 				.document();
