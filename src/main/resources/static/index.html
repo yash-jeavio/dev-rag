@@ -77,7 +77,16 @@
 	.tabs { display: flex; gap: 6px; margin-bottom: 14px; }
 	.tabs button.tab { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 6px 14px; font-size: 13px; }
 	.tabs button.tab.active { background: var(--accent); color: white; border-color: var(--accent); }
-	.hidden { display: none; }
+	/* A generic utility class must always win the display property, regardless
+	   of what else a component's own class sets (e.g. .modal-overlay sets
+	   display:flex for its centering layout) - !important is deliberate here,
+	   not incidental: without it, two same-specificity, single-class selectors
+	   resolve by source order, so whichever is declared later in this file
+	   silently wins. That caused a real bug: all three modal overlays
+	   rendered visible on page load despite carrying this class, because
+	   .modal-overlay's display:flex (declared after this rule) beat
+	   .hidden's display:none. */
+	.hidden { display: none !important; }
 	#docList { display: grid; gap: 8px; margin-top: 14px; }
 	.doc-row {
 		display: flex; justify-content: space-between; align-items: center;
