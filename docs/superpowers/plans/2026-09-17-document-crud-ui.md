@@ -546,6 +546,11 @@ Replace it with (this inserts a full new block of functions *before* `summarize`
 			.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
 			.replace(/\*(.+?)\*/g, '<em>$1</em>')
 			.replace(/`(.+?)`/g, '<code>$1</code>')
+			// NOTE (added after this plan's original code was found vulnerable to
+			// attribute- and scheme-injection XSS during review): the actual final
+			// version of this line in index.html's inlineMarkdown function escapes
+			// URL quote characters and restricts the URL scheme. Do not copy this
+			// historical snippet — read the current index.html source instead.
 			.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 	}
 

@@ -531,7 +531,9 @@
 			.replace(/\*(.+?)\*/g, '<em>$1</em>')
 			.replace(/`(.+?)`/g, '<code>$1</code>')
 			.replace(/\[(.+?)\]\((.+?)\)/g, (match, label, url) => {
-				const safeUrl = url.replace(/"/g, '&quot;');
+				const trimmedUrl = url.trim();
+				const isSafeScheme = /^(https?:|mailto:|#|\/)/i.test(trimmedUrl);
+				const safeUrl = (isSafeScheme ? trimmedUrl : '#').replace(/"/g, '&quot;');
 				return `<a href="${safeUrl}" target="_blank" rel="noopener">${label}</a>`;
 			});
 	}
@@ -539,6 +541,10 @@
 	// --- Rename ---
 	function openRenameOverlay(documentId) {
 		const doc = currentDocs.find(d => d.id === documentId);
+		if (!doc) {
+			refreshDocs();
+			return;
+		}
 		const overlay = document.getElementById('renameOverlay');
 		const input = document.getElementById('renameInput');
 		document.getElementById('renameError').textContent = '';
