@@ -106,6 +106,36 @@
 	.error-text { color: var(--bad); font-size: 13px; margin-top: 8px; }
 	.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
 	@keyframes spin { to { transform: rotate(360deg); } }
+	.menu-btn { padding: 5px 10px; font-size: 14px; margin-left: 6px; line-height: 1; }
+	.dropdown-menu {
+		position: fixed; z-index: 20; background: var(--panel); border: 1px solid var(--border);
+		border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); min-width: 160px; overflow: hidden;
+	}
+	.dropdown-menu button {
+		display: block; width: 100%; text-align: left; background: transparent; border: none; color: var(--text);
+		padding: 10px 14px; font-size: 13px; border-radius: 0; cursor: pointer;
+	}
+	.dropdown-menu button:hover { background: rgba(255,255,255,0.06); }
+	.dropdown-menu button.danger { color: var(--bad); }
+	.modal-overlay {
+		position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex;
+		align-items: center; justify-content: center; z-index: 30;
+	}
+	.modal-box {
+		background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+		padding: 20px; width: 420px; max-width: 90vw;
+	}
+	.modal-box h2 { margin-top: 0; font-size: 16px; }
+	.modal-box input[type=text] { margin-bottom: 12px; }
+	.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+	.modal-fullscreen { width: 90vw; height: 90vh; max-width: none; display: flex; flex-direction: column; }
+	.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+	.modal-header h2 { margin: 0; }
+	.view-content { flex: 1; overflow-y: auto; background: #0c0e14; border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+	.view-content pre { white-space: pre-wrap; word-wrap: break-word; font-family: inherit; margin: 0; }
+	.view-content h1, .view-content h2, .view-content h3 { margin-top: 1em; }
+	.view-content code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-family: monospace; }
+	.view-content pre.code-block { background: rgba(255,255,255,0.08); padding: 10px; border-radius: 6px; overflow-x: auto; white-space: pre; }
 </style>
 </head>
 <body>
@@ -173,6 +203,47 @@
 	</section>
 
 </main>
+
+<div id="docMenu" class="dropdown-menu hidden">
+	<button data-action="view">View file</button>
+	<button data-action="rename">Rename this file</button>
+	<button data-action="delete" class="danger">Delete document</button>
+</div>
+
+<div id="viewOverlay" class="modal-overlay hidden">
+	<div class="modal-box modal-fullscreen">
+		<div class="modal-header">
+			<h2 id="viewTitle"></h2>
+			<button class="secondary" id="viewCloseBtn">Close</button>
+		</div>
+		<div id="viewContent" class="view-content"></div>
+	</div>
+</div>
+
+<div id="renameOverlay" class="modal-overlay hidden">
+	<div class="modal-box">
+		<h2>Rename document</h2>
+		<label for="renameInput">Title</label>
+		<input type="text" id="renameInput">
+		<div id="renameError" class="error-text"></div>
+		<div class="modal-actions">
+			<button class="secondary" id="renameCancelBtn">Cancel</button>
+			<button id="renameConfirmBtn">Save</button>
+		</div>
+	</div>
+</div>
+
+<div id="deleteOverlay" class="modal-overlay hidden">
+	<div class="modal-box">
+		<h2>Delete document?</h2>
+		<p class="muted">Are you sure you want to delete this document?</p>
+		<div id="deleteError" class="error-text"></div>
+		<div class="modal-actions">
+			<button class="secondary" id="deleteNoBtn">No</button>
+			<button id="deleteYesBtn">Yes</button>
+		</div>
+	</div>
+</div>
 
 <script>
 	// The UI hides the project concept from the user entirely, per the design
@@ -301,9 +372,12 @@
 	});
 
 	// --- Document list + index status ---
+	let currentDocs = [];
+
 	async function refreshDocs() {
 		const list = document.getElementById('docList');
 		const docs = await fetch(`/api/projects/${projectId}/documents`).then(r => r.json());
+		currentDocs = docs;
 		if (docs.length === 0) {
 			list.innerHTML = '<p class="muted">No documents yet.</p>';
 			return;
@@ -323,14 +397,209 @@
 				<div class="doc-actions">
 					<span class="badge ${status.status}">${status.status}</span>
 					<button class="secondary" data-summarize="${doc.id}">Summarize</button>
+					<button class="secondary menu-btn" data-menu-btn="${doc.id}">&#8942;</button>
 				</div>`;
 			list.appendChild(row);
 		}
 		list.querySelectorAll('[data-summarize]').forEach(btn => {
 			btn.addEventListener('click', () => summarize(btn.dataset.summarize));
 		});
+		list.querySelectorAll('[data-menu-btn]').forEach(btn => {
+			btn.addEventListener('click', (event) => openDocMenu(event, btn.dataset.menuBtn));
+		});
 	}
 	document.getElementById('refreshDocsBtn').addEventListener('click', refreshDocs);
+
+	// --- Document menu (View / Rename / Delete) ---
+	let activeMenuDocId = null;
+
+	function openDocMenu(event, documentId) {
+		event.stopPropagation();
+		const menu = document.getElementById('docMenu');
+		const btnRect = event.target.getBoundingClientRect();
+		menu.style.top = `${btnRect.bottom}px`;
+		menu.style.left = `${btnRect.left}px`;
+		activeMenuDocId = documentId;
+		menu.classList.remove('hidden');
+	}
+
+	function closeDocMenu() {
+		document.getElementById('docMenu').classList.add('hidden');
+		activeMenuDocId = null;
+	}
+
+	document.getElementById('docMenu').addEventListener('click', async (event) => {
+		const action = event.target.dataset.action;
+		if (!action || !activeMenuDocId) return;
+		const documentId = activeMenuDocId;
+		closeDocMenu();
+		if (action === 'view') await openViewOverlay(documentId);
+		if (action === 'rename') openRenameOverlay(documentId);
+		if (action === 'delete') openDeleteOverlay(documentId);
+	});
+
+	document.addEventListener('click', (event) => {
+		const menu = document.getElementById('docMenu');
+		if (!menu.classList.contains('hidden') && !menu.contains(event.target) && !event.target.classList.contains('menu-btn')) {
+			closeDocMenu();
+		}
+	});
+
+	// --- View ---
+	async function openViewOverlay(documentId) {
+		const overlay = document.getElementById('viewOverlay');
+		const titleEl = document.getElementById('viewTitle');
+		const contentEl = document.getElementById('viewContent');
+		titleEl.textContent = 'Loading…';
+		contentEl.innerHTML = '';
+		overlay.classList.remove('hidden');
+		try {
+			const res = await fetch(`/api/projects/${projectId}/documents/${documentId}`);
+			const body = await res.json();
+			if (!res.ok) {
+				titleEl.textContent = 'Error';
+				contentEl.innerHTML = `<p class="error-text">${res.status}: ${escapeHtml(body.message || JSON.stringify(body))}</p>`;
+				return;
+			}
+			titleEl.textContent = body.title;
+			if (body.sourceType === 'MARKDOWN') {
+				contentEl.innerHTML = renderMarkdown(body.content);
+			} else {
+				contentEl.innerHTML = `<pre>${escapeHtml(body.content)}</pre>`;
+			}
+		} catch (e) {
+			titleEl.textContent = 'Error';
+			contentEl.innerHTML = `<p class="error-text">Request failed: ${e}</p>`;
+		}
+	}
+	document.getElementById('viewCloseBtn').addEventListener('click', () => {
+		document.getElementById('viewOverlay').classList.add('hidden');
+	});
+
+	// A small, dependency-free Markdown renderer covering headers, bold,
+	// italic, inline code, fenced code blocks, lists, and links - no
+	// external library, per this project's "no new frontend dependency" rule.
+	function renderMarkdown(text) {
+		const lines = escapeHtml(text).split('\n');
+		let html = '';
+		let inCodeBlock = false;
+		let inList = false;
+		for (const line of lines) {
+			if (line.startsWith('```')) {
+				if (inCodeBlock) {
+					html += '</pre>';
+					inCodeBlock = false;
+				} else {
+					if (inList) { html += '</ul>'; inList = false; }
+					html += '<pre class="code-block">';
+					inCodeBlock = true;
+				}
+				continue;
+			}
+			if (inCodeBlock) {
+				html += line + '\n';
+				continue;
+			}
+			const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+			if (headingMatch) {
+				if (inList) { html += '</ul>'; inList = false; }
+				const level = headingMatch[1].length;
+				html += `<h${level}>${inlineMarkdown(headingMatch[2])}</h${level}>`;
+				continue;
+			}
+			const listMatch = line.match(/^[-*]\s+(.*)$/);
+			if (listMatch) {
+				if (!inList) { html += '<ul>'; inList = true; }
+				html += `<li>${inlineMarkdown(listMatch[1])}</li>`;
+				continue;
+			}
+			if (inList) { html += '</ul>'; inList = false; }
+			if (line.trim() === '') {
+				html += '<br>';
+			} else {
+				html += `<p>${inlineMarkdown(line)}</p>`;
+			}
+		}
+		if (inList) html += '</ul>';
+		if (inCodeBlock) html += '</pre>';
+		return html;
+	}
+
+	function inlineMarkdown(text) {
+		return text
+			.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+			.replace(/\*(.+?)\*/g, '<em>$1</em>')
+			.replace(/`(.+?)`/g, '<code>$1</code>')
+			.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+	}
+
+	// --- Rename ---
+	function openRenameOverlay(documentId) {
+		const doc = currentDocs.find(d => d.id === documentId);
+		const overlay = document.getElementById('renameOverlay');
+		const input = document.getElementById('renameInput');
+		document.getElementById('renameError').textContent = '';
+		input.value = doc.title;
+		overlay.dataset.documentId = documentId;
+		overlay.classList.remove('hidden');
+		input.focus();
+	}
+	document.getElementById('renameCancelBtn').addEventListener('click', () => {
+		document.getElementById('renameOverlay').classList.add('hidden');
+	});
+	document.getElementById('renameConfirmBtn').addEventListener('click', async () => {
+		const overlay = document.getElementById('renameOverlay');
+		const documentId = overlay.dataset.documentId;
+		const input = document.getElementById('renameInput');
+		const errorEl = document.getElementById('renameError');
+		const newTitle = input.value.trim();
+		errorEl.textContent = '';
+		if (!newTitle) { errorEl.textContent = 'Title is required.'; return; }
+		try {
+			const res = await fetch(`/api/projects/${projectId}/documents/${documentId}/title`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ title: newTitle })
+			});
+			const body = await res.json();
+			if (!res.ok) {
+				errorEl.textContent = body.errors ? body.errors[0].message : (body.message || 'Rename failed.');
+				return;
+			}
+			overlay.classList.add('hidden');
+			await refreshDocs();
+		} catch (e) {
+			errorEl.textContent = 'Request failed: ' + e;
+		}
+	});
+
+	// --- Delete ---
+	function openDeleteOverlay(documentId) {
+		const overlay = document.getElementById('deleteOverlay');
+		document.getElementById('deleteError').textContent = '';
+		overlay.dataset.documentId = documentId;
+		overlay.classList.remove('hidden');
+	}
+	document.getElementById('deleteNoBtn').addEventListener('click', () => {
+		document.getElementById('deleteOverlay').classList.add('hidden');
+	});
+	document.getElementById('deleteYesBtn').addEventListener('click', async () => {
+		const overlay = document.getElementById('deleteOverlay');
+		const documentId = overlay.dataset.documentId;
+		const errorEl = document.getElementById('deleteError');
+		try {
+			const res = await fetch(`/api/projects/${projectId}/documents/${documentId}`, { method: 'DELETE' });
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				errorEl.textContent = body.message || `Delete failed (${res.status}).`;
+				return;
+			}
+			overlay.classList.add('hidden');
+			await refreshDocs();
+		} catch (e) {
+			errorEl.textContent = 'Request failed: ' + e;
+		}
+	});
 
 	async function summarize(documentId) {
 		const box = document.getElementById('answerBox');
